@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cidade de 15 Minutos</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Cidade de 15 Minutos</h1>
+      <select id="cidade" disabled><option>Carregando...</option></select>
+    </header>
+
+    <p id="mensagem" class="mensagem"></p>
+
+    <div id="resultado" hidden>
+      <!-- Resumo da cidade -->
+      <div class="cards">
+        <div class="card destaque"><span class="rotulo">Os 4 serviços em 15 min</span><span class="valor" id="geral"></span><span class="pessoas" id="geral-pessoas"></span></div>
+        <div class="card"><span class="rotulo">Sem caminho a pé</span><span class="valor" id="sem-caminho"></span><span class="pessoas" id="sem-caminho-pessoas"></span></div>
+        <div class="card"><span class="rotulo">Moradores</span><span class="valor" id="moradores"></span><span class="pessoas">grade IBGE</span></div>
+        <div class="card"><span class="rotulo">Esquinas analisadas</span><span class="valor" id="esquinas"></span><span class="pessoas">OpenStreetMap</span></div>
+      </div>
+
+      <!-- Por serviço -->
+      <h2>Por serviço</h2>
+      <div class="rolagem">
+        <table>
+          <thead>
+            <tr>
+              <th>Serviço</th>
+              <th>Em 15 min</th>
+              <th>Pessoas</th>
+              <th>Tempo médio</th>
+              <th>Mediana</th>
+              <th>Sem caminho</th>
+              <th>Esquinas</th>
+            </tr>
+          </thead>
+          <tbody id="tabela"></tbody>
+        </table>
+      </div>
+
+      <!-- Histórico de análises -->
+      <h2>Análises</h2>
+      <div class="rolagem">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Data</th><th>Velocidade</th><th>Limite</th><th>Processamento</th></tr>
+          </thead>
+          <tbody id="historico"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
