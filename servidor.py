@@ -1,13 +1,15 @@
 """
 Servidor local do site cidade15-web.
 
-Faz duas coisas:
-  1. Entrega os arquivos do site (index.html, style.css, app.js) ao navegador.
-  2. Repassa todo pedido que começa com /api/ para a API do Pedro (na VPS),
-     acrescentando a chave X-API-Key. Assim a chave nunca aparece no JavaScript.
+Faz no seu PC o mesmo papel que o nginx faz na VPS:
+  1. Entrega os arquivos do site (index.html, *.js, *.css, metodologia/, vendor/).
+  2. Repassa os pedidos /api/... (API do Pedro, com a chave X-API-Key) e
+     /mapas/v1/... (serviço de mapas) para o servidor definido em API_URL.
+     Assim a chave nunca aparece no JavaScript.
 
 Como rodar:  python servidor.py   e abrir http://localhost:8080
 Usa só a biblioteca padrão do Python (nada para instalar).
+API_URL precisa ser https://cidade15.com.br (o serviço de mapas não responde pelo IP).
 """
 
 import json
@@ -19,8 +21,17 @@ from pathlib import Path
 
 PASTA = Path(__file__).resolve().parent
 
-# Arquivos que o navegador pode receber. Qualquer outro (.env, servidor.py...) é bloqueado.
-ARQUIVOS_PUBLICOS = {"/index.html", "/style.css", "/app.js"}
+# Caminhos repassados ao servidor remoto (os mesmos que o nginx repassa na VPS).
+PREFIXOS_REMOTOS = ("/api/", "/mapas/v1/")
+
+# Arquivos que NUNCA são entregues ao navegador (as mesmas regras do nginx).
+EXTENSOES_BLOQUEADAS = (".py", ".md")
+
+
+def caminho_bloqueado(caminho: str) -> bool:
+    """Bloqueia arquivos ocultos (.env, .git...) e arquivos .py/.md."""
+    partes = [p for p in caminho.split("/") if p]
+    return any(p.startswith(".") for p in partes) or caminho.lower().endswith(EXTENSOES_BLOQUEADAS)
 
 
 def ler_env(caminho: Path) -> dict:
@@ -47,24 +58,44 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(PASTA), **kwargs)
 
     def do_GET(self):
-        if self.path.startswith("/api/"):
+        if self.path.startswith(PREFIXOS_REMOTOS):
             self.repassar_para_api()
             return
 
         caminho = self.path.split("?", 1)[0]
-        if caminho == "/":
-            caminho = "/index.html"
-        if caminho not in ARQUIVOS_PUBLICOS:
+        if caminho_bloqueado(caminho):
             self.send_error(404, "Arquivo nao encontrado")
             return
-        self.path = caminho
+        # O próprio Python entrega o arquivo (e o index.html das pastas).
         super().do_GET()
 
-    def repassar_para_api(self):
+    def list_directory(self, path):
+        """Não mostra a lista de arquivos de uma pasta (ex.: /vendor/)."""
+        self.send_error(404, "Arquivo nao encontrado")
+        return None
+
+    def do_POST(self):
+        """Só pedidos /api/ podem ser enviados com POST (ex.: a simulação)."""
+        if not self.path.startswith("/api/"):
+            self.send_error(404, "Arquivo nao encontrado")
+            return
+        tamanho = int(self.headers.get("Content-Length", 0))
+        corpo = self.rfile.read(tamanho)
+        self.repassar_para_api(corpo)
+
+    def repassar_para_api(self, corpo=None):
         """Faz o pedido à API da VPS e devolve a resposta ao navegador."""
         pedido = urllib.request.Request(
             API_URL + self.path,
-            headers={"X-API-Key": API_KEY, "Accept": "application/json"},
+            data=corpo,
+            method="POST" if corpo is not None else "GET",
+            headers={
+                # O Cloudflare bloqueia o nome padrão "Python-urllib" (erro 1010).
+                "User-Agent": "cidade15-web-servidor-local/1.0",
+                "X-API-Key": API_KEY,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
         )
         try:
             with urllib.request.urlopen(pedido, timeout=30) as resposta:
