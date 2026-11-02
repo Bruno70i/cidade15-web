@@ -154,6 +154,7 @@
     nodeGroup = window.L.layerGroup().addTo(map);
     serviceGroup = window.L.layerGroup().addTo(map);
     map.on("moveend", schedulePoints);
+    window.CitySimulation?.attach(map);
   }
 
   function notice(message, error = false) {
@@ -264,6 +265,7 @@
         metadataLoading=false;renderedExecution=null;
         nodeGroup?.clearLayers();serviceGroup?.clearLayers();boundaryGroup?.clearLayers();nodes=[];
         context = {...next,sample:null};
+        window.CitySimulation?.reset(next.execution);
       } else {
         context.city=next.city;context.execution=next.execution;
       }
