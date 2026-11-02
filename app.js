@@ -138,9 +138,11 @@
     if (!segmento) return;
     $("dica").textContent = segmento.dataset.dica;
     $("dica").hidden = false;
+    // Centraliza a dica no pedaço da barra, sem deixar que ela saia pelas bordas.
     const largura = $("barra").clientWidth;
+    const metadeDaDica = $("dica").offsetWidth / 2;
     const centro = segmento.offsetLeft + segmento.offsetWidth / 2;
-    $("dica").style.left = `${Math.min(Math.max(centro, 100), largura - 100)}px`;
+    $("dica").style.left = `${Math.min(Math.max(centro, metadeDaDica), largura - metadeDaDica)}px`;
   }
 
   // ===== Painel (i): informações e comparação =====
@@ -195,9 +197,13 @@
   function desenharLegenda() {
     const legenda = estado.cidade ? window.MapaCidade.legenda() : window.MapaEstado.legenda();
     $("legenda-titulo").textContent = legenda.titulo;
+    $("legenda-titulo-curto").textContent = legenda.tituloCurto; // usado no celular
     $("legenda-regua").style.background = legenda.degrade;
+    // A régua fica em pé: "posicao" 0 = no topo, 1 = embaixo.
+    // Cada marca leva o texto completo (computador) e o curto (celular); o CSS mostra um só.
     $("legenda-marcas").innerHTML = legenda.marcas
-      .map((marca) => `<span style="left:${marca.posicao * 100}%">${escapar(marca.texto)}</span>`).join("");
+      .map((marca) => `<span style="top:${marca.posicao * 100}%"><span class="so-computador">${escapar(marca.texto)}</span><span class="so-celular">${escapar(marca.curto ?? marca.texto)}</span></span>`)
+      .join("");
     $("legenda-itens").innerHTML = legenda.extras.map((item) => {
       const simbolo = item.icone
         ? `<span class="mini-pino" style="--cor:${window.Icones.cor(item.icone)}">${window.Icones.svg(item.icone)}</span>`
@@ -309,6 +315,14 @@
     $("exemplo-formula").textContent = `${inteiro.format(saude.within_threshold_weight)} ÷ ${inteiro.format(total)} × 100 = ${pct(saude.coverage_percentage)}`;
   }
 
+  // Minimiza ou abre o card (no celular ele ocupa metade da tela).
+  // Minimizado, o CSS esconde tudo menos o que tem a classe "sempre-visivel".
+  function alternarCartao() {
+    const recolhido = $("cartao").classList.toggle("recolhido");
+    $("recolher-cartao").setAttribute("aria-expanded", String(!recolhido));
+    $("recolher-cartao").setAttribute("aria-label", recolhido ? "Abrir o painel" : "Minimizar o painel");
+  }
+
   // Marca o botão da categoria escolhida (só um fica marcado).
   function escolherCategoria(categoria) {
     estado.categoria = categoria;
@@ -349,6 +363,13 @@
       });
     }
     $("voltar").addEventListener("click", voltarParaSP);
+    $("recolher-cartao").addEventListener("click", alternarCartao);
+    // Guarda a altura do card numa variável do CSS (--altura-cartao). No celular,
+    // o botão (i) e o "centralizar" usam essa medida para ficar logo acima do card,
+    // subindo e descendo junto quando ele abre ou é minimizado.
+    new ResizeObserver(() => {
+      document.documentElement.style.setProperty("--altura-cartao", `${$("cartao").offsetHeight}px`);
+    }).observe($("cartao"));
     $("barra").addEventListener("pointerover", mostrarDica);
     $("barra").addEventListener("focusin", mostrarDica);
     $("barra").addEventListener("pointerleave", () => { $("dica").hidden = true; });

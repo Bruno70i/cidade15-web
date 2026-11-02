@@ -129,14 +129,16 @@ body.adicionando #mapa { cursor: crosshair; }
 @keyframes girar { to { transform: rotate(360deg); } }
 
 /* Legenda (canto superior direito) */
-.legenda { top: var(--margem); right: var(--margem); width: 250px; padding: 12px 14px; }
-.legenda p { margin: 0 0 8px; font-size: .8125rem; font-weight: 700; line-height: 1.35; }
-/* Régua em degradê com os valores embaixo */
-.regua { height: 12px; border-radius: 99px; }
-.marcas { position: relative; height: 18px; margin: 4px 0 8px; font-size: .72rem; color: var(--texto-suave); }
-.marcas span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
-.marcas span:first-child { transform: none; }
-.marcas span:last-child { transform: translateX(-100%); }
+.legenda { top: var(--margem); right: var(--margem); width: 210px; padding: 12px 14px; }
+.legenda p { margin: 0 0 10px; font-size: .8125rem; font-weight: 700; line-height: 1.35; }
+.so-celular { display: none; } /* textos curtos: só aparecem no celular */
+/* Régua em pé (melhor em cima) com os valores ao lado */
+.escala { display: flex; gap: 8px; margin-bottom: 10px; }
+.regua { width: 12px; height: 130px; border-radius: 99px; flex: none; }
+.marcas { position: relative; flex: 1; height: 130px; font-size: .72rem; color: var(--texto-suave); }
+.marcas > span { position: absolute; left: 0; transform: translateY(-50%); white-space: nowrap; }
+.marcas > span:first-child { transform: none; }
+.marcas > span:last-child { transform: translateY(-100%); }
 .legenda ul { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
 .legenda li { display: flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--texto-suave); }
 .legenda li > i { width: 14px; height: 14px; border-radius: 4px; flex: none; border: 1px solid rgba(0, 0, 0, .08); }
@@ -152,6 +154,15 @@ body.adicionando #mapa { cursor: crosshair; }
 /* ===== Card de métricas (canto inferior esquerdo) ===== */
 .cartao { left: var(--margem); bottom: 30px; width: 380px; max-height: calc(100vh - 120px); overflow-y: auto; padding: 18px 20px 16px; }
 .cartao-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+/* Seta no topo do card: minimiza (e abre de novo) */
+.alca { display: flex; justify-content: center; width: 100%; margin: -10px 0 4px; padding: 0; border: 0; background: none; color: var(--texto-suave); }
+.alca:hover { color: var(--texto); }
+.alca .icone { width: 26px; height: 26px; transition: transform .2s; }
+.cartao.recolhido .alca .icone { transform: rotate(180deg); } /* seta para cima = abrir */
+/* Minimizado: só fica o que tem a classe "sempre-visivel" (título e a %) */
+.cartao.recolhido #cartao-estado > :not(.sempre-visivel),
+.cartao.recolhido #cartao-cidade > :not(.sempre-visivel) { display: none; }
+.cartao.recolhido .valor { margin-top: 6px; font-size: 2rem; }
 .combinacao { display: flex; flex-wrap: wrap; gap: 8px; border: 0; margin: 12px 0 0; padding: 0; }
 .combinacao legend { width: 100%; padding: 0; margin-bottom: 6px; font-size: .8125rem; font-weight: 600; color: var(--texto-suave); }
 .combinacao label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--borda); border-radius: 99px; font-size: .875rem; font-weight: 600; cursor: pointer; }
@@ -181,7 +192,7 @@ body.adicionando #mapa { cursor: crosshair; }
 .seg-resto { background: var(--cinza-barra); border-radius: 0 8px 8px 0; }
 .seg:hover, .seg:focus-visible { filter: brightness(1.08); }
 .dica {
-  position: absolute; bottom: calc(100% + 10px); transform: translateX(-50%); white-space: nowrap; pointer-events: none;
+  position: absolute; bottom: calc(100% + 10px); transform: translateX(-50%); width: max-content; max-width: 100%; pointer-events: none;
   background: var(--texto); color: #fff; font-size: .8125rem; padding: 6px 10px; border-radius: 8px; box-shadow: var(--sombra);
 }
 .dica::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border: 6px solid transparent; border-top-color: var(--texto); }
@@ -261,17 +272,24 @@ body.adicionando #mapa { cursor: crosshair; }
   #botao-menu { width: 46px; height: 46px; }
   .menu { top: 66px; width: calc(100% - 24px); }
   .busca { left: 66px; right: 12px; width: auto; transform: none; height: 46px; }
-  .legenda { top: 66px; left: 12px; right: 12px; width: auto; padding: 8px 12px; }
-  .legenda ul { display: none; }
-  .marcas { margin-bottom: 0; }
-  .legenda small { display: none; }
-  .aviso, .carregando { top: 190px; }
-  .aviso:not([hidden]) ~ .carregando { top: 236px; }
+  /* Legenda compacta, em pé, no lado direito: só a largura do conteúdo */
+  .legenda { top: 66px; right: 12px; width: max-content; max-width: 90px; padding: 7px 8px; border-radius: 12px; }
+  .legenda p { margin-bottom: 5px; font-size: .68rem; line-height: 1.2; }
+  .so-computador { display: none; }
+  .so-celular { display: inline; }
+  .escala { gap: 5px; margin-bottom: 0; }
+  .regua { width: 8px; }
+  .regua, .marcas { height: 80px; }
+  .marcas { min-width: 26px; font-size: .68rem; }
+  .legenda ul, .legenda small { display: none; }
+  .aviso, .carregando { top: 66px; left: 12px; right: 112px; transform: none; max-width: none; }
+  .aviso:not([hidden]) ~ .carregando { top: 112px; }
   .grupo-zoom { display: none; }
-  .controles { top: auto; bottom: calc(46vh + 12px); transform: none; }
+  /* (i) e centralizar à direita, logo acima do card (acompanham a altura dele) */
+  .controles { top: auto; right: 12px; bottom: calc(var(--altura-cartao, 46vh) + 72px); transform: none; }
   .cartao { left: 0; right: 0; bottom: 0; width: auto; max-height: 46vh; border-radius: 18px 18px 0 0; padding: 14px 16px 18px; }
   .valor { font-size: 2.4rem; }
-  .botao-redondo { left: 12px; right: auto; bottom: calc(46vh + 12px); width: 48px; height: 48px; }
+  .botao-redondo { right: 12px; bottom: calc(var(--altura-cartao, 46vh) + 12px); width: 48px; height: 48px; }
   .info { inset: 66px 12px 12px; width: auto; max-height: none; }
   .painel { inset: 0; width: auto; border-radius: 0; padding: 18px 16px; }
 }

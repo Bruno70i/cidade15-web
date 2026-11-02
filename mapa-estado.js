@@ -201,10 +201,12 @@
                 : "";
             return {
                 titulo: `População com acesso ${textoCombinacao()} em até 15 min`,
-                degrade: window.Cores.degrade(), // à esquerda a pior cidade
+                tituloCurto: "Acesso",
+                degrade: window.Cores.degrade(true, "180deg"), // em cima a melhor cidade
+                // "curto" é o texto usado no celular, onde a legenda é estreita.
                 marcas: [
-                    { posicao: 0, texto: `${porcentagem(menor)} (pior)` },
-                    { posicao: 1, texto: `${porcentagem(maior)} (melhor)` },
+                    { posicao: 0, texto: `${porcentagem(maior)} melhor`, curto: porcentagem(maior) },
+                    { posicao: 1, texto: `${porcentagem(menor)} pior`, curto: porcentagem(menor) },
                 ],
                 extras: [{ cor: COR_SEM_ANALISE, texto: "ainda sem análise" }],
                 nota: `${sobreZeradas}A cor compara as cidades entre si. Contornos: IBGE.`,

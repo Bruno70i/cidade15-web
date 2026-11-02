@@ -30,10 +30,11 @@
     window.Cores = {
         rgb,
         css: (posicao) => `rgb(${rgb(posicao).join(",")})`,
-        // Degradê para a régua da legenda. "doMelhor" = começa pela cor boa (à esquerda).
-        degrade(doMelhor = false) {
+        // Degradê para a régua da legenda. "doMelhor" = começa pela cor boa.
+        // "direcao": "90deg" = da esquerda para a direita; "180deg" = de cima para baixo.
+        degrade(doMelhor = false, direcao = "90deg") {
             const paradas = PARADAS.map(([posicao, cor]) => `rgb(${cor.join(",")}) ${(doMelhor ? 1 - posicao : posicao) * 100}%`);
-            return `linear-gradient(90deg, ${(doMelhor ? paradas.reverse() : paradas).join(", ")})`;
+            return `linear-gradient(${direcao}, ${(doMelhor ? paradas.reverse() : paradas).join(", ")})`;
         },
     };
 })();

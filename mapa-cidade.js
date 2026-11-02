@@ -17,8 +17,12 @@
     let categoria = "overall";  // "overall" = índice geral (os 4 tipos)
     let modo = "calor";         // "calor" ou "pontos"
     let mostrarLocais = true;
-    let pontos = [];            // [{lat, lon, min}] (min = minutos; null = sem caminho)
-    let locais = [];            // estabelecimentos da área visível
+    // Pontos e estabelecimentos JÁ RECEBIDOS da cidade aberta (por id). Ao mover o
+    // mapa, a API manda outra amostra; em vez de trocar (o desenho "pulava"), juntamos.
+    const pontosRecebidos = new Map(); // id -> {lat, lon, min} (min = minutos; null = sem caminho)
+    const locaisRecebidos = new Map(); // id -> estabelecimento
+    let pontos = [];                   // lista usada no desenho
+    let locais = [];
     let geracao = 0;            // muda a cada cidade aberta: respostas antigas são ignoradas
     let controle = null;        // permite cancelar o pedido de pontos anterior
     let espera = null;          // temporizador para não pedir a cada pixel de arrasto
@@ -94,7 +98,7 @@
         const pedida = categoria;
         const caixa = areaVisivel();
         controle?.abort();
-        if (!caixa) { pontos = []; locais = []; desenhar(); return; }
+        if (!caixa) return; // a cidade saiu da tela: mantém o que já foi desenhado
         controle = new AbortController();
         const meuControle = controle;
         // No índice geral precisamos das 4 categorias (o tempo é o do serviço mais distante).
@@ -103,8 +107,10 @@
         try {
             const respostas = await Promise.all(codigos.map((codigo) => pedirPontos(codigo, caixa, meuControle.signal)));
             if (minha !== geracao || meuControle.signal.aborted || pedida !== categoria) return;
-            pontos = juntarPontos(respostas, codigos);
-            locais = respostas.flatMap((resposta) => resposta.services);
+            for (const ponto of juntarPontos(respostas, codigos)) pontosRecebidos.set(ponto.id, ponto);
+            for (const local of respostas.flatMap((resposta) => resposta.services)) locaisRecebidos.set(local.id, local);
+            pontos = [...pontosRecebidos.values()];
+            locais = [...locaisRecebidos.values()];
             desenhar();
         } catch (erro) {
             if (meuControle.signal.aborted || erro.name === "AbortError") return;
@@ -123,7 +129,7 @@
             for (const no of resposta.nodes) {
                 if (!Number.isFinite(no.lat) || !Number.isFinite(no.lon)) continue;
                 const minutos = tempo(no.categories?.[codigos[i]]);
-                const ponto = porId.get(no.id) ?? { lat: no.lat, lon: no.lon, min: 0, vistos: 0 };
+                const ponto = porId.get(no.id) ?? { id: no.id, lat: no.lat, lon: no.lon, min: 0, vistos: 0 };
                 ponto.min = ponto.min === null || minutos === null ? null : Math.max(ponto.min, minutos);
                 ponto.vistos++;
                 porId.set(no.id, ponto);
@@ -136,7 +142,8 @@
     function desenhar() {
         camadaPontos.clearLayers();
         if (modo === "calor") {
-            camadaCalor.definir(pontos, (ponto) => posicaoDoTempo(ponto.min));
+            // O contorno da cidade corta o calor: nada é pintado fora da divisa.
+            camadaCalor.definir(pontos, (ponto) => posicaoDoTempo(ponto.min), info?.boundary);
         } else {
             camadaCalor.definir([], () => 0);
             for (const ponto of pontos) {
@@ -156,8 +163,10 @@
         // Um ícone por quadradinho da tela (maior com o mapa afastado), para não amontoar.
         const lado = mapa.getZoom() < 14 ? 40 : 28;
         const ocupados = new Set();
+        const tela = mapa.getBounds().pad(0.2); // só o que está na tela (com uma folga)
         for (const local of locais) {
             if (!Number.isFinite(local.lat) || !Number.isFinite(local.lon)) continue;
+            if (!tela.contains([local.lat, local.lon])) continue;
             const posicao = mapa.latLngToContainerPoint([local.lat, local.lon]);
             const quadradinho = `${Math.floor(posicao.x / lado)}:${Math.floor(posicao.y / lado)}`;
             if (ocupados.has(quadradinho)) continue;
@@ -175,11 +184,18 @@
         }
     }
 
+    // Esquece os pontos e estabelecimentos recebidos (nova cidade ou nova categoria).
+    function esquecerRecebidos() {
+        pontosRecebidos.clear();
+        locaisRecebidos.clear();
+        pontos = [];
+        locais = [];
+    }
+
     function limpar() {
         controle?.abort();
         clearTimeout(espera);
-        pontos = [];
-        locais = [];
+        esquecerRecebidos();
         camadaContorno.clearLayers();
         camadaPontos.clearLayers();
         camadaLocais.clearLayers();
@@ -231,7 +247,7 @@
 
         trocarCategoria(novaCategoria) {
             categoria = novaCategoria;
-            pontos = [];
+            esquecerRecebidos();
             desenhar();
             agendar(0);
         },
@@ -252,11 +268,13 @@
             const t = limiar();
             return {
                 titulo: categoria === "overall" ? "Tempo a pé até os 4 tipos de serviço" : `Tempo a pé até ${NOMES[categoria].toLowerCase()}`,
-                degrade: window.Cores.degrade(true), // à esquerda a cor boa (perto)
+                tituloCurto: "Minutos a pé",
+                degrade: window.Cores.degrade(true, "180deg"), // em cima a cor boa (perto)
+                // "curto" é o texto usado no celular, onde a legenda é estreita.
                 marcas: [
-                    { posicao: 0, texto: "0 min" },
-                    { posicao: 0.5, texto: `${numero.format(t)} min` },
-                    { posicao: 1, texto: `${numero.format(2 * t)}+ min` },
+                    { posicao: 0, texto: "0 min", curto: "0" },
+                    { posicao: 0.5, texto: `${numero.format(t)} min`, curto: numero.format(t) },
+                    { posicao: 1, texto: `${numero.format(2 * t)}+ min`, curto: `${numero.format(2 * t)}+` },
                 ],
                 extras: CATEGORIAS.map((codigo) => ({ icone: codigo, texto: NOMES[codigo] })),
                 nota: `O meio da régua é o limite de ${numero.format(t)} minutos. Áreas sem cor não têm pontos de rua na amostra.`,
