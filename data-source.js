@@ -1,39 +1,43 @@
 "use strict";
 
-// Somente consultas à API existente. Não contém credenciais ou resultados fixos.
+// Consultas à API do projeto. Não contém credenciais: o nginx (ou o servidor.py,
+// no PC) acrescenta a chave. Regra importante: NUNCA fazer 1 chamada por cidade,
+// porque o nginx bloqueia muitas chamadas seguidas (erro 429).
 (() => {
-  async function load({ fetchImpl = (...args) => fetch(...args) } = {}) {
-    async function request(path) {
-      const response = await fetchImpl(path, { cache: "no-store" });
-      if (!response.ok) {
-        const message = response.status === 429
-          ? "Muitas consultas à API. Aguarde alguns instantes e tente novamente."
-          : "Não foi possível consultar os resultados na API. Tente novamente.";
-        throw new Error(message);
-      }
-      return response.json();
+  // Faz o pedido e devolve o JSON. Em erros como 429/502 o nginx responde uma
+  // página HTML, então só lemos JSON quando a resposta é JSON de verdade.
+  async function pedir(caminho) {
+    const resposta = await fetch(caminho, { cache: "no-store" });
+    const ehJson = (resposta.headers.get("Content-Type") || "").includes("application/json");
+    const dados = ehJson ? await resposta.json().catch(() => null) : null;
+    if (!resposta.ok) {
+      if (resposta.status === 429) throw new Error("Muitas consultas à API. Aguarde alguns instantes e tente novamente.");
+      if (resposta.status === 404) throw new Error("Esta cidade ainda não tem uma análise concluída.");
+      throw new Error("Não foi possível consultar os resultados na API. Tente novamente.");
     }
-    const cities = await request("/api/v1/cities");
-    if (!Array.isArray(cities) || !cities.length) throw new Error("Ainda não há cidades disponíveis para consulta.");
-    const datasets = new Map();
-    const available = [];
-    const unavailable = [];
-    // Consultas sequenciais evitam rajadas ao abrir o site, respeitando o limite do servidor.
-    for (const city of cities) {
-      try {
-        const latest = await request(`/api/v1/cities/${encodeURIComponent(city.id)}/latest`);
-        const report = latest?.population_report;
-        if (!latest?.execution || !report || !Number.isFinite(report.total_weight) || !Number.isFinite(report.overall_coverage_percentage) || !report.categories || !Object.keys(report.categories).length) {
-          throw new Error("Relatório populacional indisponível.");
-        }
-        datasets.set(String(city.id), { city, latest });
-        available.push(city);
-      } catch {
-        unavailable.push(city);
-      }
-    }
-    if (!available.length) throw new Error("Não há resultados populacionais disponíveis no momento. Aguarde a conclusão da análise ou tente novamente.");
-    return { cities: available, datasets, unavailable };
+    if (dados === null) throw new Error("A API respondeu num formato inesperado. Tente novamente.");
+    return dados;
   }
-  window.CityDataSource = { load };
+
+  window.CityDataSource = {
+    // Resumo de TODAS as cidades analisadas numa chamada só (rota /cities/summary).
+    // Sem categorias: índice geral (quem chega aos 4 tipos de serviço).
+    // Com categorias (ex.: ["health", "culture"]): quem chega a todas as escolhidas.
+    async summary(categorias = []) {
+      const filtro = categorias.length ? `?categories=${encodeURIComponent(categorias.join(","))}` : "";
+      const lista = await pedir(`/api/v1/cities/summary${filtro}`);
+      if (!Array.isArray(lista)) throw new Error("A API respondeu num formato inesperado. Tente novamente.");
+      return lista;
+    },
+
+    // Resultado detalhado de UMA cidade (só é chamado para a cidade aberta).
+    async latest(cidadeId) {
+      const latest = await pedir(`/api/v1/cities/${encodeURIComponent(cidadeId)}/latest`);
+      const report = latest?.population_report;
+      if (!latest?.execution || !report || !Number.isFinite(report.total_weight) || !report.categories) {
+        throw new Error("Esta cidade ainda não tem resultado populacional.");
+      }
+      return latest;
+    },
+  };
 })();

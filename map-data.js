@@ -3,8 +3,15 @@
   function create({fetchImpl=(...args)=>fetch(...args)}={}) {
     async function request(path,signal) {
       const response=await fetchImpl(path,{cache:"no-store",signal});
-      const value=await response.json();
-      if(!response.ok) throw new Error(value.detail || "Não foi possível consultar o mapa.");
+      // Em erros como 429/502 o nginx responde HTML: só lê JSON quando é JSON
+      // (antes aparecia o erro "Unexpected token '<'").
+      const isJson=(response.headers.get("Content-Type") || "").includes("application/json");
+      const value=isJson ? await response.json().catch(()=>null) : null;
+      if(!response.ok) {
+        if(response.status===429) throw new Error("Muitas consultas ao mapa. Aguarde alguns segundos e tente novamente.");
+        throw new Error(value?.detail || "Não foi possível consultar o mapa.");
+      }
+      if(value===null) throw new Error("Não foi possível consultar o mapa.");
       return value;
     }
     return {

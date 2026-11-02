@@ -132,32 +132,39 @@
     }
     // ===== PARTE 3 VAI AQUI =====
 
-    // Preenche a tabela: uma linha por categoria simulada.
+    // Preenche a tabela: uma linha por categoria simulada e, no fim, o índice geral.
     function mostrarResultado(dados) {
         const tabela = el("sim-results-body");
         tabela.replaceChildren();
         for (const [codigo, resultado] of Object.entries(dados.results || {})) {
-            const pessoas = resultado.population; // contando pessoas (resultado principal)
-            const esquinas = resultado.nodes;     // contando esquinas (comparação)
-            const variacao = pessoas.coverage_delta_percentage_points;
-            const sinal = variacao > 0 ? "+" : variacao < 0 ? "−" : "";
-            const celulas = [
-                NOMES[codigo] || codigo,
-                `${numero.format(pessoas.before.coverage_percentage)}%`,
-                `${numero.format(pessoas.after.coverage_percentage)}%`,
-                `${sinal}${numero.format(Math.abs(variacao))} p.p.`,
-                `${numero.format(esquinas.before.coverage_percentage)}% → ${numero.format(esquinas.after.coverage_percentage)}%`,
-            ];
-            const linha = document.createElement("tr");
-            for (const texto of celulas) {
-                const celula = document.createElement("td");
-                celula.textContent = texto;
-                linha.append(celula);
-            }
-            if (variacao > 0) linha.children[3].classList.add("sim-melhora");
-            tabela.append(linha);
+            adicionarLinha(tabela, NOMES[codigo] || codigo, resultado);
         }
+        // "overall" = pessoas que chegam aos 4 tipos de serviço (índice geral).
+        if (dados.overall) adicionarLinha(tabela, "Aos 4 tipos (índice geral)", dados.overall);
         el("sim-results").hidden = false;
+    }
+
+    // Uma linha da tabela: antes, depois, variação e a comparação contando esquinas.
+    function adicionarLinha(tabela, nome, resultado) {
+        const pessoas = resultado.population; // contando pessoas (resultado principal)
+        const esquinas = resultado.nodes;     // contando esquinas (comparação)
+        const variacao = pessoas.coverage_delta_percentage_points;
+        const sinal = variacao > 0 ? "+" : variacao < 0 ? "−" : "";
+        const celulas = [
+            nome,
+            `${numero.format(pessoas.before.coverage_percentage)}%`,
+            `${numero.format(pessoas.after.coverage_percentage)}%`,
+            `${sinal}${numero.format(Math.abs(variacao))} p.p.`,
+            `${numero.format(esquinas.before.coverage_percentage)}% → ${numero.format(esquinas.after.coverage_percentage)}%`,
+        ];
+        const linha = document.createElement("tr");
+        for (const texto of celulas) {
+            const celula = document.createElement("td");
+            celula.textContent = texto;
+            linha.append(celula);
+        }
+        if (variacao > 0) linha.children[3].classList.add("sim-melhora");
+        tabela.append(linha);
     }
 
     // A "ponte" com o map.js: são as duas funções chamadas pelos ganchos do passo 3.

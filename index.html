@@ -6,22 +6,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title>Cidade15 · Serviços a até 15 minutos a pé</title>
-  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261101-simulacao-01">
-  <link rel="stylesheet" href="style.css?v=20261101-simulacao-01">
-  <script src="vendor/leaflet/leaflet.js?v=20261101-simulacao-01" defer></script>
-  <script src="map-data.js?v=20261101-simulacao-01" defer></script>
-  <script src="map.js?v=20261101-simulacao-01" defer></script>
-  <script src="simulation.js?v=20261101-simulacao-01" defer></script>
-  <script src="data-source.js?v=20261101-simulacao-01" defer></script>
-  <script src="app.js?v=20261101-simulacao-01" defer></script>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261101-mapa-sp-01">
+  <link rel="stylesheet" href="style.css?v=20261101-mapa-sp-01">
+  <script src="vendor/leaflet/leaflet.js?v=20261101-mapa-sp-01" defer></script>
+  <script src="map-data.js?v=20261101-mapa-sp-01" defer></script>
+  <script src="map.js?v=20261101-mapa-sp-01" defer></script>
+  <script src="simulation.js?v=20261101-mapa-sp-01" defer></script>
+  <script src="data-source.js?v=20261101-mapa-sp-01" defer></script>
+  <script src="mapa-estado.js?v=20261101-mapa-sp-01" defer></script>
+  <script src="app.js?v=20261101-mapa-sp-01" defer></script>
 </head>
 
 <body>
   <a class="skip-link" href="#main">Pular para o conteúdo</a>
   <header class="site-header">
-    <a class="site-name" href="#visao-geral">Cidade de <span>15</span> minutos</a>
+    <a class="site-name" href="#mapa" data-view="statemap">Cidade de <span>15</span> minutos</a>
     <nav class="main-nav" aria-label="Navegação principal">
-      <a class="nav-item active" href="#visao-geral" data-view="overview" aria-current="page">Resultados</a>
+      <a class="nav-item active" href="#mapa" data-view="statemap" aria-current="page">Mapa de SP</a>
+      <a class="nav-item" href="#visao-geral" data-view="overview">Resultados</a>
       <a class="nav-item" href="#comparar" data-view="comparison">Comparar cidades</a>
       <a class="nav-item" href="#metodologia" data-view="methodology">Como funciona</a>
     </nav>
@@ -41,7 +43,41 @@
     <div id="status" class="status-banner" role="status" aria-live="polite"><span id="status-text">Carregando os
         resultados…</span><button id="retry" class="button" hidden>Tentar novamente</button></div>
     <div id="application" hidden>
-      <div id="overview" class="view">
+      <!-- Primeira tela: mapa de SP pintado pela nota de cada cidade (mapa-estado.js) -->
+      <div id="statemap" class="view">
+        <section class="state-map-section" aria-labelledby="state-map-title">
+          <h2 id="state-map-title" class="sr-only">Mapa dos municípios de São Paulo</h2>
+          <div class="state-tools">
+            <div class="city-search">
+              <label for="busca-cidade">Buscar cidade</label>
+              <input id="busca-cidade" type="text" placeholder="Digite o nome da cidade" autocomplete="off"
+                spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugestoes">
+              <ul id="sugestoes" class="suggestions" role="listbox" aria-label="Cidades encontradas" hidden></ul>
+            </div>
+            <fieldset class="combo-picker" id="combinacao">
+              <legend>Pintar o mapa pelo acesso a</legend>
+              <label><input type="checkbox" value="health" checked> Saúde</label>
+              <label><input type="checkbox" value="education" checked> Educação</label>
+              <label><input type="checkbox" value="food" checked> Alimentação</label>
+              <label><input type="checkbox" value="culture" checked> Cultura</label>
+            </fieldset>
+          </div>
+          <div class="map-frame state-frame">
+            <div id="mapa-estado" class="city-map state-map" role="region"
+              aria-label="Mapa dos municípios de São Paulo pintados pela nota de cada cidade"></div>
+          </div>
+          <div class="state-legend">
+            <p id="legenda-estado-titulo">Pessoas com acesso aos 4 tipos de serviço em até 15 minutos a pé</p>
+            <ul id="legenda-estado" aria-labelledby="legenda-estado-titulo"></ul>
+          </div>
+          <p id="estado-status" class="map-result" role="status" aria-live="polite"></p>
+          <p class="map-note">Passe o mouse sobre uma cidade para ver a nota e clique para abrir os resultados. Com as
+            quatro categorias marcadas, a cor mostra o índice geral: quem chega aos quatro tipos de serviço. Ao
+            desmarcar alguma, mostra quem chega a todas as que ficaram marcadas. Contornos dos municípios: IBGE.</p>
+        </section>
+      </div>
+
+      <div id="overview" class="view" hidden>
         <section class="hero-card" aria-labelledby="hero-title">
           <div class="hero-topline"><span id="context-location"></span><span class="estimate-label">Estimativa com dados
               do IBGE</span></div>
@@ -134,15 +170,13 @@
       </div>
 
       <div id="comparison" class="view" hidden>
-        <p class="comparison-intro">Os valores abaixo mostram a estimativa de acesso de cada população. O tempo e a
-          velocidade usados no cálculo aparecem junto aos resultados.</p>
-        <div id="cities-comparison" class="cities-comparison"></div>
-        <section class="cities-table-panel">
-          <h2>Percentual de pessoas com acesso</h2>
-          <div class="table-scroll" tabindex="0" aria-label="Resultados das cidades">
-            <table id="cities-table"></table>
-          </div>
-        </section>
+        <p class="comparison-intro">Percentual da população de cada cidade que chega a pé, em até 15 minutos, a cada
+          tipo de serviço. Clique no nome de uma cidade para ver os detalhes ou no título de uma coluna para ordenar.</p>
+        <div class="compare-filter"><label for="filtro-cidades">Filtrar cidades</label><input id="filtro-cidades"
+            type="search" placeholder="Nome da cidade" autocomplete="off"></div>
+        <div class="table-scroll" tabindex="0" aria-label="Resultados das cidades">
+          <table id="cities-table" class="cities-table"></table>
+        </div>
       </div>
 
       <div id="methodology" class="view" hidden>
@@ -219,8 +253,10 @@
                 target="_blank" rel="noopener">IBGE: população distribuída em pequenas áreas.</a><br><a
                 href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap: rede de
                 ruas e locais mapeados.</a></p>
+            <p><a href="https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais.html"
+                target="_blank" rel="noopener">IBGE: contornos dos municípios usados no mapa de SP.</a></p>
             <p>A API do projeto disponibiliza os resultados já calculados. Os indicadores são consultados na API ao
-              abrir a página e verificados novamente a cada minuto enquanto ela estiver visível. Novas cidades e
+              abrir a página e verificados novamente a cada 5 minutos enquanto ela estiver aberta. Novas cidades e
               análises concluídas e salvas no banco entram automaticamente na seleção. O mapa consulta automaticamente
               os pontos, estabelecimentos e tempos salvos para a mesma execução dos indicadores. Em cidades ou áreas com
               muitos dados, os marcadores são apresentados por amostragem. Ao aproximar ou mover o mapa, a área é
