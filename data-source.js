@@ -6,14 +6,18 @@
 (() => {
   // Faz o pedido e devolve o JSON. Em erros como 429/502 o nginx responde uma
   // página HTML, então só lemos JSON quando a resposta é JSON de verdade.
-  async function pedir(caminho) {
-    const resposta = await fetch(caminho, { cache: "no-store" });
+  // O erro lançado leva o código HTTP em "status" (a simulação usa o 422).
+  async function pedir(caminho, opcoes = {}) {
+    const resposta = await fetch(caminho, { cache: "no-store", ...opcoes });
     const ehJson = (resposta.headers.get("Content-Type") || "").includes("application/json");
     const dados = ehJson ? await resposta.json().catch(() => null) : null;
     if (!resposta.ok) {
-      if (resposta.status === 429) throw new Error("Muitas consultas à API. Aguarde alguns instantes e tente novamente.");
-      if (resposta.status === 404) throw new Error("Esta cidade ainda não tem uma análise concluída.");
-      throw new Error("Não foi possível consultar os resultados na API. Tente novamente.");
+      let texto = "Não foi possível consultar os resultados na API. Tente novamente.";
+      if (resposta.status === 429) texto = "Muitas consultas em pouco tempo. Aguarde alguns segundos e tente novamente.";
+      if (resposta.status === 404) texto = "Esta cidade ainda não tem uma análise concluída.";
+      const erro = new Error(texto);
+      erro.status = resposta.status;
+      throw erro;
     }
     if (dados === null) throw new Error("A API respondeu num formato inesperado. Tente novamente.");
     return dados;
@@ -38,6 +42,15 @@
         throw new Error("Esta cidade ainda não tem resultado populacional.");
       }
       return latest;
+    },
+
+    // Simulação: recalcula o acesso com estabelecimentos hipotéticos. Nada é gravado.
+    simulate(execucaoId, servicos) {
+      return pedir(`/api/v1/executions/${encodeURIComponent(execucaoId)}/simulate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ services: servicos }),
+      });
     },
   };
 })();

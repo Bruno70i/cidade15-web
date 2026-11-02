@@ -3,280 +3,262 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
   <title>Cidade15 · Serviços a até 15 minutos a pé</title>
-  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261101-mapa-sp-01">
-  <link rel="stylesheet" href="style.css?v=20261101-mapa-sp-01">
-  <script src="vendor/leaflet/leaflet.js?v=20261101-mapa-sp-01" defer></script>
-  <script src="map-data.js?v=20261101-mapa-sp-01" defer></script>
-  <script src="map.js?v=20261101-mapa-sp-01" defer></script>
-  <script src="simulation.js?v=20261101-mapa-sp-01" defer></script>
-  <script src="data-source.js?v=20261101-mapa-sp-01" defer></script>
-  <script src="mapa-estado.js?v=20261101-mapa-sp-01" defer></script>
-  <script src="app.js?v=20261101-mapa-sp-01" defer></script>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261102-layout-02">
+  <link rel="stylesheet" href="style.css?v=20261102-layout-02">
+  <!-- Ordem importa: o Leaflet primeiro, o app.js por último (ele usa todos os outros). -->
+  <script src="vendor/leaflet/leaflet.js?v=20261102-layout-02" defer></script>
+  <script src="data-source.js?v=20261102-layout-02" defer></script>
+  <script src="map-data.js?v=20261102-layout-02" defer></script>
+  <script src="icones.js?v=20261102-layout-02" defer></script>
+  <script src="cores.js?v=20261102-layout-02" defer></script>
+  <script src="calor.js?v=20261102-layout-02" defer></script>
+  <script src="mapa-estado.js?v=20261102-layout-02" defer></script>
+  <script src="mapa-cidade.js?v=20261102-layout-02" defer></script>
+  <script src="simulacao.js?v=20261102-layout-02" defer></script>
+  <script src="busca.js?v=20261102-layout-02" defer></script>
+  <script src="app.js?v=20261102-layout-02" defer></script>
 </head>
 
 <body>
-  <a class="skip-link" href="#main">Pular para o conteúdo</a>
-  <header class="site-header">
-    <a class="site-name" href="#mapa" data-view="statemap">Cidade de <span>15</span> minutos</a>
-    <nav class="main-nav" aria-label="Navegação principal">
-      <a class="nav-item active" href="#mapa" data-view="statemap" aria-current="page">Mapa de SP</a>
-      <a class="nav-item" href="#visao-geral" data-view="overview">Resultados</a>
-      <a class="nav-item" href="#comparar" data-view="comparison">Comparar cidades</a>
-      <a class="nav-item" href="#metodologia" data-view="methodology">Como funciona</a>
-    </nav>
-  </header>
-  <main id="main" tabindex="-1">
-    <div class="page-heading">
-      <div>
-        <h1 id="page-title">Serviços essenciais a até 15 minutos a pé</h1>
-        <p id="page-description">Veja quantas pessoas conseguem chegar a locais de saúde, educação, alimentação e
-          cultura.</p>
-      </div>
-      <div class="city-picker" id="city-picker"><label for="cidade">Escolha uma cidade</label><select id="cidade"
-          disabled>
-          <option>Carregando…</option>
-        </select></div>
+  <h1 class="sr-only">Cidade de 15 minutos: acesso a pé a serviços essenciais</h1>
+
+  <!-- O mapa ocupa a tela inteira; todo o resto flutua por cima dele. -->
+  <div id="mapa" role="region" aria-label="Mapa"></div>
+
+  <!-- Canto superior esquerdo: menu -->
+  <button id="botao-menu" class="flutuante botao-quadrado" type="button" aria-label="Abrir menu"
+    aria-expanded="false" aria-controls="menu">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+  </button>
+  <nav id="menu" class="flutuante menu" aria-label="Menu" hidden>
+    <p class="marca">Cidade de <span>15</span> minutos</p>
+    <button class="item-menu" type="button" data-painel="comparar"><i data-icone="grafico"></i>Comparar cidades</button>
+    <button class="item-menu" type="button" data-painel="metodologia"><i data-icone="livro"></i>Como funciona</button>
+    <p class="menu-rotulo" id="rotulo-modo">Visualização da cidade</p>
+    <div class="alternador" role="group" aria-labelledby="rotulo-modo">
+      <button type="button" data-modo="calor" aria-pressed="true"><i data-icone="calor"></i>Calor</button>
+      <button type="button" data-modo="pontos" aria-pressed="false"><i data-icone="pontos"></i>Pontos</button>
     </div>
-    <div id="status" class="status-banner" role="status" aria-live="polite"><span id="status-text">Carregando os
-        resultados…</span><button id="retry" class="button" hidden>Tentar novamente</button></div>
-    <div id="application" hidden>
-      <!-- Primeira tela: mapa de SP pintado pela nota de cada cidade (mapa-estado.js) -->
-      <div id="statemap" class="view">
-        <section class="state-map-section" aria-labelledby="state-map-title">
-          <h2 id="state-map-title" class="sr-only">Mapa dos municípios de São Paulo</h2>
-          <div class="state-tools">
-            <div class="city-search">
-              <label for="busca-cidade">Buscar cidade</label>
-              <input id="busca-cidade" type="text" placeholder="Digite o nome da cidade" autocomplete="off"
-                spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugestoes">
-              <ul id="sugestoes" class="suggestions" role="listbox" aria-label="Cidades encontradas" hidden></ul>
-            </div>
-            <fieldset class="combo-picker" id="combinacao">
-              <legend>Pintar o mapa pelo acesso a</legend>
-              <label><input type="checkbox" value="health" checked> Saúde</label>
-              <label><input type="checkbox" value="education" checked> Educação</label>
-              <label><input type="checkbox" value="food" checked> Alimentação</label>
-              <label><input type="checkbox" value="culture" checked> Cultura</label>
-            </fieldset>
-          </div>
-          <div class="map-frame state-frame">
-            <div id="mapa-estado" class="city-map state-map" role="region"
-              aria-label="Mapa dos municípios de São Paulo pintados pela nota de cada cidade"></div>
-          </div>
-          <div class="state-legend">
-            <p id="legenda-estado-titulo">Pessoas com acesso aos 4 tipos de serviço em até 15 minutos a pé</p>
-            <ul id="legenda-estado" aria-labelledby="legenda-estado-titulo"></ul>
-          </div>
-          <p id="estado-status" class="map-result" role="status" aria-live="polite"></p>
-          <p class="map-note">Passe o mouse sobre uma cidade para ver a nota e clique para abrir os resultados. Com as
-            quatro categorias marcadas, a cor mostra o índice geral: quem chega aos quatro tipos de serviço. Ao
-            desmarcar alguma, mostra quem chega a todas as que ficaram marcadas. Contornos dos municípios: IBGE.</p>
-        </section>
+    <label class="chave"><input type="checkbox" id="mostrar-locais" checked><i data-icone="local"></i>Mostrar
+      estabelecimentos</label>
+    <p class="creditos">TCC · Mensuração Computacional de Acessibilidade Urbana<br>Guilherme Silva, Pedro Henrique
+      e Bruno Nascimento<br>Orientação: Prof. José Bueno</p>
+  </nav>
+
+  <!-- Topo: busca com sugestões -->
+  <div class="flutuante busca" role="search">
+    <svg class="lupa" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>
+    <input id="busca" type="text" placeholder="Pesquisar cidade" autocomplete="off" spellcheck="false"
+      role="combobox" aria-label="Pesquisar cidade" aria-autocomplete="list" aria-expanded="false" aria-controls="sugestoes">
+    <ul id="sugestoes" class="sugestoes" role="listbox" aria-label="Cidades encontradas" hidden></ul>
+  </div>
+  <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
+  <div id="carregando" class="carregando" aria-hidden="true" hidden><span></span><b id="carregando-texto">Carregando…</b></div>
+
+  <!-- Canto superior direito: legenda das cores do mapa -->
+  <div id="legenda" class="flutuante legenda" hidden>
+    <p id="legenda-titulo"></p>
+    <div id="legenda-regua" class="regua"></div>
+    <div id="legenda-marcas" class="marcas"></div>
+    <ul id="legenda-itens"></ul>
+    <small id="legenda-nota"></small>
+  </div>
+
+  <!-- Lateral direita: zoom e centralizar -->
+  <div class="controles" role="group" aria-label="Controles do mapa">
+    <div class="flutuante grupo-zoom">
+      <button id="zoom-mais" type="button" aria-label="Aproximar">+</button>
+      <button id="zoom-menos" type="button" aria-label="Afastar">−</button>
+    </div>
+    <button id="centralizar" class="flutuante botao-quadrado" type="button" aria-label="Centralizar o mapa"
+      title="Centralizar o mapa">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v4m0 12v4M2 12h4m12 0h4" /></svg>
+    </button>
+  </div>
+
+  <!-- Canto inferior esquerdo: card de métricas -->
+  <section id="cartao" class="flutuante cartao" aria-label="Métricas">
+    <!-- Sem cidade aberta: mapa de SP -->
+    <div id="cartao-estado">
+      <h2 class="titulo-icone"><i data-icone="mapa"></i>Mapa de SP</h2>
+      <p class="suave">Cada cidade está pintada pela parte da população que chega a pé, em até 15 minutos, aos
+        serviços marcados. Clique numa cidade ou pesquise pelo nome.</p>
+      <fieldset class="combinacao" id="combinacao">
+        <legend>Pintar pelo acesso a</legend>
+        <label><input type="checkbox" value="health" checked><i data-icone="health"></i>Saúde</label>
+        <label><input type="checkbox" value="education" checked><i data-icone="education"></i>Educação</label>
+        <label><input type="checkbox" value="food" checked><i data-icone="food"></i>Alimentação</label>
+        <label><input type="checkbox" value="culture" checked><i data-icone="culture"></i>Cultura</label>
+      </fieldset>
+      <p id="estado-status" class="suave" role="status" aria-live="polite"></p>
+    </div>
+
+    <!-- Com cidade aberta: métricas e simulação -->
+    <div id="cartao-cidade" hidden>
+      <div class="cartao-topo">
+        <h2 class="titulo-icone"><i data-icone="local"></i><span id="cidade-nome">Métricas</span></h2>
+        <button id="voltar" class="botao-texto" type="button"><i data-icone="voltar"></i>Mapa de SP</button>
       </div>
-
-      <div id="overview" class="view" hidden>
-        <section class="hero-card" aria-labelledby="hero-title">
-          <div class="hero-topline"><span id="context-location"></span><span class="estimate-label">Estimativa com dados
-              do IBGE</span></div>
-          <h2 id="hero-title">Pessoas com acesso aos quatro tipos de serviço</h2>
-          <div class="hero-value" id="hero-value">—</div>
-          <p class="hero-people" id="hero-people"></p>
-          <p class="hero-explanation" id="hero-explanation"></p>
-          <button class="text-button" data-open-view="methodology">Como esse número é calculado?</button>
-        </section>
-        <section class="statistics" aria-label="Informações sobre a análise">
-          <div><span>População considerada</span><strong id="population-total">—</strong><small>Pessoas representadas
-              nos dados do IBGE</small></div>
-          <div><span>Tempo de caminhada</span><strong id="threshold">—</strong><small id="speed"></small></div>
-          <div><span>Data do cálculo</span><strong id="analysis-date">—</strong><small>O resultado corresponde a essa
-              análise</small></div>
-        </section>
-
-        <section class="map-section" id="rede" aria-labelledby="map-title">
-          <div class="map-heading">
-            <div>
-              <h2 id="map-title">Localize os estabelecimentos</h2>
-              <p>Escolha um tipo de serviço e clique nos ícones para ver o nome dos locais. Para simular um novo local, use "Adicionar pontos" e clique no mapa.</p>
-            </div>
-          </div>
-          <div class="map-toolbar">
-            <div class="map-category"><label for="map-service">Tipo de serviço</label><select id="map-service">
-                <option value="health">Saúde</option>
-                <option value="education">Educação</option>
-                <option value="food">Alimentação</option>
-                <option value="culture">Cultura</option>
-              </select></div>
-            <p class="map-analysis-params" id="map-analysis-params"></p><button class="text-button" id="map-reset"
-              disabled>Ver a cidade inteira</button>
-          </div>
-          <div class="map-toolbar sim-toolbar" aria-label="Simulação de novos estabelecimentos">
-            <span class="sim-label">Simular novo local:</span>
-            <div class="map-category"><label for="sim-category" class="sr-only">Tipo do novo local</label><select id="sim-category">
-                <option value="health">Saúde</option>
-                <option value="education">Educação</option>
-                <option value="food">Alimentação</option>
-                <option value="culture">Cultura</option>
-              </select></div>
-            <button class="button" id="sim-add" type="button" aria-pressed="false" disabled>Adicionar pontos</button>
-            <button class="button sim-primary" id="sim-run" type="button" disabled>Simular</button>
-            <button class="text-button" id="sim-clear" type="button" disabled>Limpar</button>
-          </div>
-          <div class="map-frame">
-            <div id="city-map" class="city-map" role="region" aria-label="Mapa dos estabelecimentos"></div>
-            <div id="map-notice" class="map-notice" role="status" hidden><span id="map-message"></span><button
-                id="map-retry" class="button" type="button" hidden>Tentar carregar o mapa novamente</button></div>
-          </div>
-          <p id="sim-message" class="map-note" role="status" aria-live="polite"></p>
-          <ol id="sim-points" class="sim-points"></ol>
-          <div class="table-scroll" id="sim-results" tabindex="0" hidden>
-            <table>
-              <thead><tr><th scope="col">Serviço</th><th scope="col">Antes</th><th scope="col">Depois</th><th scope="col">Variação</th><th scope="col">Contando esquinas</th></tr></thead>
-              <tbody id="sim-results-body"></tbody>
-            </table>
-            <p class="map-note">A simulação é um "e se": calcula como ficaria o acesso com os novos locais, sem alterar os resultados oficiais da análise.</p>
-          </div>
-          <div class="map-service-legend" id="map-services-legend" aria-label="Legenda dos estabelecimentos"></div>
-          <p id="map-service-count" class="map-note" aria-live="polite"></p>
-          <div id="map-network-info">
-            <p class="network-explanation">Cada bolinha é um ponto da rua. A cor indica o tempo desse ponto até o
-              serviço mais próximo. Esses pontos não representam casas ou moradores.</p>
-            <div class="map-legend" aria-label="Tempo de caminhada a partir dos pontos"><span><i
-                  class="node-inside"></i><span id="map-within-label">No limite</span></span><span><i
-                  class="node-outside"></i><span id="map-outside-label">Além do limite</span></span><span><i
-                  class="node-unreachable"></i>Não há caminho registrado</span><span id="map-count"
-                class="map-count"></span></div>
-            <p class="map-result" id="map-status" aria-live="polite"></p>
-          </div>
-          <p class="map-note" id="map-scope">O mapa mostra onde ficam os serviços. Os números de pessoas acima são
-            estimados a partir da população do IBGE.</p>
-        </section>
-
-        <section class="services-section" id="servicos" aria-labelledby="services-title">
-          <div class="section-heading">
-            <div>
-              <h2 id="services-title">Acesso a cada tipo de serviço</h2>
-              <p id="services-description"></p>
-            </div>
-          </div>
-          <div id="service-cards" class="service-grid"></div>
-          <p class="metric-explanation"><strong>Como ler:</strong> o percentual e a quantidade de pessoas se referem ao
-            mesmo resultado. Uma pessoa pode ter acesso a mais de um tipo de serviço; por isso, os valores das
-            categorias não devem ser somados.</p>
-        </section>
-
+      <!-- Botões de categoria: só um fica marcado (aria-pressed="true") -->
+      <div class="chips" id="categorias" role="group" aria-label="Categoria">
+        <button type="button" data-categoria="overall" aria-pressed="true"><i data-icone="overall"></i>Geral</button>
+        <button type="button" data-categoria="health" aria-pressed="false"><i data-icone="health"></i>Saúde</button>
+        <button type="button" data-categoria="education" aria-pressed="false"><i data-icone="education"></i>Educação</button>
+        <button type="button" data-categoria="food" aria-pressed="false"><i data-icone="food"></i>Alimentação</button>
+        <button type="button" data-categoria="culture" aria-pressed="false"><i data-icone="culture"></i>Cultura</button>
       </div>
-
-      <div id="comparison" class="view" hidden>
-        <p class="comparison-intro">Percentual da população de cada cidade que chega a pé, em até 15 minutos, a cada
-          tipo de serviço. Clique no nome de uma cidade para ver os detalhes ou no título de uma coluna para ordenar.</p>
-        <div class="compare-filter"><label for="filtro-cidades">Filtrar cidades</label><input id="filtro-cidades"
-            type="search" placeholder="Nome da cidade" autocomplete="off"></div>
-        <div class="table-scroll" tabindex="0" aria-label="Resultados das cidades">
-          <table id="cities-table" class="cities-table"></table>
+      <p class="valor" id="valor">—</p>
+      <p class="impacto" id="impacto" hidden></p>
+      <p class="valor-legenda"><i data-icone="pessoas"></i><span id="valor-legenda"></span></p>
+      <!-- Barra: azul = acesso hoje, vermelho = ganho com a simulação, cinza = sem acesso -->
+      <div class="barra" id="barra">
+        <span class="seg seg-original" data-seg="original" tabindex="0"></span>
+        <span class="seg seg-impacto" data-seg="impacto" tabindex="0"></span>
+        <span class="seg seg-resto" data-seg="resto" tabindex="0"></span>
+        <div class="dica" id="dica" role="tooltip" hidden></div>
+      </div>
+      <ul class="legenda-barra">
+        <li><i class="cor-original"></i>Valor original</li>
+        <li><i class="cor-impacto"></i>Impacto simulado</li>
+        <li><i class="cor-resto"></i>Sem acesso</li>
+      </ul>
+      <details class="simular">
+        <summary><i data-icone="varinha"></i>Simular novos locais</summary>
+        <p class="suave">Escolha o tipo, clique em <b>Adicionar</b> e depois no mapa, onde o novo local ficaria.</p>
+        <div class="chips" id="sim-tipos" role="group" aria-label="Tipo do novo local">
+          <button type="button" data-tipo="health" aria-pressed="true"><i data-icone="health"></i>Saúde</button>
+          <button type="button" data-tipo="education" aria-pressed="false"><i data-icone="education"></i>Educação</button>
+          <button type="button" data-tipo="food" aria-pressed="false"><i data-icone="food"></i>Alimentação</button>
+          <button type="button" data-tipo="culture" aria-pressed="false"><i data-icone="culture"></i>Cultura</button>
         </div>
-      </div>
-
-      <div id="methodology" class="view" hidden>
-        <p class="method-intro">O projeto estima quantas pessoas conseguem caminhar até serviços essenciais em um tempo
-          definido. Ele combina informações sobre moradores, ruas e estabelecimentos.</p>
-        <section class="method-grid" aria-label="Etapas do cálculo">
-          <article class="method-step"><span class="step-number">1</span>
-            <h2>Onde as pessoas moram</h2>
-            <p>O IBGE divide o território em pequenas áreas, chamadas células, e informa quantas pessoas vivem em cada
-              uma. O projeto lê esses dados de um arquivo geográfico.</p>
-          </article>
-          <article class="method-step"><span class="step-number">2</span>
-            <h2>Onde estão os serviços</h2>
-            <p>Os dados do OpenStreetMap fornecem ruas e estabelecimentos, separados em saúde, educação, alimentação e
-              cultura.</p>
-          </article>
-          <article class="method-step"><span class="step-number">3</span>
-            <h2>Quanto tempo leva a pé</h2>
-            <p>Cada área com moradores é associada a um ponto próximo da rede de ruas. O algoritmo calcula o menor tempo
-              desse ponto até um serviço de cada tipo, usando os caminhos da rede.</p>
-          </article>
-          <article class="method-step"><span class="step-number">4</span>
-            <h2>Como isso vira um resultado</h2>
-            <p>Se o ponto alcança o serviço dentro do tempo definido, os moradores daquela célula entram na soma da
-              categoria. Essa soma, dividida pela população considerada, gera o percentual.</p>
-          </article>
-        </section>
-        <section class="method-example" aria-labelledby="example-title">
-          <h2 id="example-title">Um exemplo com os dados da análise</h2>
-          <p id="method-example-text"></p>
-          <p id="method-example-formula" class="example-formula"></p>
-          <p class="example-note">Esse valor vem do cálculo populacional do projeto. Ele não é obtido contando os ícones
-            ou as bolinhas do mapa.</p>
-        </section>
-        <section class="method-questions" aria-labelledby="questions-title">
-          <h2 id="questions-title">Entenda os resultados</h2>
-          <details>
-            <summary>O que significa ter acesso aos quatro tipos de serviço?</summary>
-            <p>A pessoa está representada em uma área cujo ponto de referência alcança ao menos um local de cada
-              categoria dentro do tempo definido. Cada percurso é calculado separadamente, a partir da mesma região. O
-              resultado geral não é a média dos quatro percentuais.</p>
-          </details>
-          <details>
-            <summary>Por que a quantidade de pessoas é uma estimativa?</summary>
-            <p>O cálculo usa a população de pequenas áreas do IBGE, representadas por pontos próximos da rede de ruas.
-              Ele não mede o trajeto individual de cada morador. A população considerada depende do arquivo e do recorte
-              usados na análise.</p>
-          </details>
-          <details>
-            <summary>Os resultados indicam atendimento garantido?</summary>
-            <p>O indicador estima proximidade pela rede de ruas. Ele não avalia vagas, filas, horários, capacidade de
-              atendimento ou qualidade dos serviços. Os resultados também dependem da cobertura e da precisão dos dados
-              mapeados.</p>
-          </details>
-          <details>
-            <summary>O que os símbolos do mapa representam?</summary>
-            <p>Os ícones indicam estabelecimentos. O nome e a localização vêm dos dados usados na análise. Alguns ícones
-              específicos são escolhidos pelo nome cadastrado; locais sem um tipo claro recebem um símbolo genérico.</p>
-            <p>As bolinhas aparecem junto aos estabelecimentos e mostram pontos de partida na rede de ruas. A quantidade
-              exibida é limitada para manter a navegação leve; aproxime ou mova o mapa para consultar outras áreas. Cada
-              bolinha permite consultar um tempo de caminhada. Elas não representam moradores e sua quantidade não deve
-              ser comparada à população exibida no painel.</p>
-          </details>
-          <details>
-            <summary>Posso somar as pessoas das quatro categorias?</summary>
-            <p>Uma mesma pessoa pode ter acesso, por exemplo, a saúde e alimentação. Por isso, as quantidades de cada
-              categoria se sobrepõem. O grupo com acesso a todas elas é apresentado separadamente no início da página.
-            </p>
-          </details>
-          <details>
-            <summary>De onde vêm os dados?</summary>
-            <p><a
-                href="https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/Notas_metodologicas_grade_estatistica_2022.pdf"
-                target="_blank" rel="noopener">IBGE: população distribuída em pequenas áreas.</a><br><a
-                href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap: rede de
-                ruas e locais mapeados.</a></p>
-            <p><a href="https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais.html"
-                target="_blank" rel="noopener">IBGE: contornos dos municípios usados no mapa de SP.</a></p>
-            <p>A API do projeto disponibiliza os resultados já calculados. Os indicadores são consultados na API ao
-              abrir a página e verificados novamente a cada 5 minutos enquanto ela estiver aberta. Novas cidades e
-              análises concluídas e salvas no banco entram automaticamente na seleção. O mapa consulta automaticamente
-              os pontos, estabelecimentos e tempos salvos para a mesma execução dos indicadores. Em cidades ou áreas com
-              muitos dados, os marcadores são apresentados por amostragem. Ao aproximar ou mover o mapa, a área é
-              consultada novamente. Novas cidades ficam disponíveis após a análise ser concluída e salva no banco; não é
-              necessário exportar um arquivo de mapa manualmente. A navegação não executa novos cálculos nem altera o
-              banco.</p>
-          </details>
-        </section>
-        <section class="project-credits">
-          <h2>Sobre o projeto</h2>
-          <p>Mensuração Computacional de Acessibilidade Urbana</p>
-          <p>Guilherme Silva, Pedro Henrique e Bruno Nascimento<br>Orientação: Prof. José Bueno</p>
-        </section>
-      </div>
-      <footer class="page-footer">
-        <p id="snapshot-note">Resultados disponibilizados pela API do projeto.</p><a href="#metodologia"
-          data-view="methodology">Como funciona</a>
-      </footer>
+        <div class="linha">
+          <button id="sim-adicionar" class="botao" type="button" aria-pressed="false"><i data-icone="mais"></i><span>Adicionar</span></button>
+          <button id="sim-calcular" class="botao primario" type="button" disabled><i data-icone="varinha"></i>Calcular impacto</button>
+          <button id="sim-limpar" class="botao-texto" type="button" disabled>Limpar</button>
+        </div>
+        <p id="sim-mensagem" class="suave" aria-live="polite"></p>
+      </details>
     </div>
-  </main>
+  </section>
+
+  <!-- Canto inferior direito: informações e comparação -->
+  <button id="botao-info" class="flutuante botao-redondo" type="button" aria-label="Informações e comparação"
+    aria-expanded="false" aria-controls="info">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>
+  </button>
+  <section id="info" class="flutuante info" aria-labelledby="info-titulo" hidden>
+    <div class="info-topo">
+      <h2 id="info-titulo" class="titulo-icone"><i data-icone="info"></i>Informações e comparação</h2>
+      <button class="botao-fechar" type="button" data-fechar="info" aria-label="Fechar">×</button>
+    </div>
+    <div id="info-corpo"></div>
+  </section>
+
+  <!-- Painel "Comparar cidades" (abre pelo menu) -->
+  <section id="painel-comparar" class="painel" aria-labelledby="comparar-titulo" hidden>
+    <div class="painel-topo">
+      <h2 id="comparar-titulo" class="titulo-icone"><i data-icone="grafico"></i>Comparar cidades</h2>
+      <button class="botao-fechar" type="button" data-fechar="painel-comparar" aria-label="Fechar">×</button>
+    </div>
+    <p class="suave">Percentual da população de cada cidade que chega a pé, em até 15 minutos, a cada tipo de
+      serviço. Clique no nome de uma cidade para abri-la no mapa ou no título de uma coluna para ordenar.</p>
+    <div class="filtro"><label for="filtro-cidades">Filtrar cidades</label><input id="filtro-cidades" type="search"
+        placeholder="Nome da cidade" autocomplete="off"></div>
+    <div class="tabela-rolagem" tabindex="0" aria-label="Resultados das cidades">
+      <table id="tabela-cidades" class="tabela-cidades"></table>
+    </div>
+  </section>
+
+  <!-- Painel "Como funciona" (abre pelo menu) -->
+  <section id="painel-metodologia" class="painel" aria-labelledby="metodologia-titulo" hidden>
+    <div class="painel-topo">
+      <h2 id="metodologia-titulo" class="titulo-icone"><i data-icone="livro"></i>Como os números são calculados</h2>
+      <button class="botao-fechar" type="button" data-fechar="painel-metodologia" aria-label="Fechar">×</button>
+    </div>
+    <p class="suave">O projeto estima quantas pessoas conseguem caminhar até serviços essenciais em um tempo
+      definido. Ele combina informações sobre moradores, ruas e estabelecimentos.</p>
+    <ol class="etapas">
+      <li>
+        <h3><i data-icone="pessoas"></i>Onde as pessoas moram</h3>
+        <p>O IBGE divide o território em pequenas áreas, chamadas células, e informa quantas pessoas vivem em cada
+          uma. O projeto lê esses dados de um arquivo geográfico.</p>
+      </li>
+      <li>
+        <h3><i data-icone="local"></i>Onde estão os serviços</h3>
+        <p>Os dados do OpenStreetMap fornecem ruas e estabelecimentos, separados em saúde, educação, alimentação e
+          cultura.</p>
+      </li>
+      <li>
+        <h3><i data-icone="caminhar"></i>Quanto tempo leva a pé</h3>
+        <p>Cada área com moradores é associada a um ponto próximo da rede de ruas. O algoritmo calcula o menor tempo
+          desse ponto até um serviço de cada tipo, usando os caminhos da rede.</p>
+      </li>
+      <li>
+        <h3><i data-icone="grafico"></i>Como isso vira um resultado</h3>
+        <p>Se o ponto alcança o serviço dentro do tempo definido, os moradores daquela célula entram na soma da
+          categoria. Essa soma, dividida pela população considerada, gera o percentual.</p>
+      </li>
+    </ol>
+    <section id="exemplo" class="exemplo" hidden>
+      <h3 id="exemplo-titulo"></h3>
+      <p id="exemplo-texto"></p>
+      <p id="exemplo-formula" class="formula"></p>
+    </section>
+    <h3>Entenda os resultados</h3>
+    <details>
+      <summary>O que significa ter acesso aos quatro tipos de serviço?</summary>
+      <p>A pessoa está representada em uma área cujo ponto de referência alcança ao menos um local de cada categoria
+        dentro do tempo definido. Cada percurso é calculado separadamente, a partir da mesma região. O resultado
+        geral não é a média dos quatro percentuais.</p>
+    </details>
+    <details>
+      <summary>Por que a quantidade de pessoas é uma estimativa?</summary>
+      <p>O cálculo usa a população de pequenas áreas do IBGE, representadas por pontos próximos da rede de ruas. Ele
+        não mede o trajeto individual de cada morador. A população considerada depende do arquivo e do recorte usados
+        na análise.</p>
+    </details>
+    <details>
+      <summary>Os resultados indicam atendimento garantido?</summary>
+      <p>O indicador estima proximidade pela rede de ruas. Ele não avalia vagas, filas, horários, capacidade de
+        atendimento ou qualidade dos serviços. Os resultados também dependem da cobertura e da precisão dos dados
+        mapeados.</p>
+    </details>
+    <details>
+      <summary>O que as cores do mapa representam?</summary>
+      <p>Os dois mapas usam o mesmo degradê: vermelho é pior e verde-azulado é melhor. No mapa de SP, a cor compara
+        as cidades entre si (a pior fica vermelha e a melhor, verde-azulada). Na cidade aberta, o mapa de calor mostra
+        o tempo a pé até o serviço mais próximo: cada parte do mapa faz a média dos pontos de rua ao redor, e a cor
+        areia, no meio da régua, é o limite de 15 minutos. Esses pontos não representam casas ou moradores, e a
+        quantidade usada é uma amostra para manter a navegação leve. Os ícones marcam os estabelecimentos.</p>
+    </details>
+    <details>
+      <summary>Posso somar as pessoas das quatro categorias?</summary>
+      <p>Uma mesma pessoa pode ter acesso, por exemplo, a saúde e alimentação. Por isso, as quantidades de cada
+        categoria se sobrepõem. O grupo com acesso a todas elas é o índice geral.</p>
+    </details>
+    <details>
+      <summary>De onde vêm os dados?</summary>
+      <p><a href="https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/Notas_metodologicas_grade_estatistica_2022.pdf"
+          target="_blank" rel="noopener">IBGE: população distribuída em pequenas áreas.</a><br>
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap: rede de ruas
+          e locais mapeados.</a><br>
+        <a href="https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais.html"
+          target="_blank" rel="noopener">IBGE: contornos dos municípios usados no mapa de SP.</a></p>
+      <p>A API do projeto disponibiliza os resultados já calculados. Eles são consultados ao abrir a página e
+        conferidos de novo a cada 5 minutos enquanto ela estiver aberta. A navegação não executa novos cálculos nem
+        altera o banco; a simulação calcula um "e se" sem gravar nada.</p>
+    </details>
+    <p class="suave" id="nota-fonte"></p>
+  </section>
+
+  <!-- Erro ao abrir o site (por exemplo, API fora do ar) -->
+  <div id="erro-inicial" class="flutuante erro-inicial" role="alert" hidden>
+    <p id="erro-inicial-texto"></p>
+    <button id="tentar-de-novo" class="botao primario" type="button">Tentar novamente</button>
+  </div>
 </body>
 
 </html>
