@@ -38,8 +38,8 @@
             return;
         }
         lista.innerHTML = sugestoes.map((cidade, i) => {
-            // Bolinha com a cor do mapa de SP + a nota, quando a cidade tem nota.
-            const nota = window.MapaEstado.notaECor(cidade.nome);
+            // Cor e nota da cidade no mapa-múndi, vinculadas pelo ID.
+            const nota = window.MapaMundo.notaECor(cidade.id);
             const selo = nota ? `<span class="nota"><i style="background:${nota.cor}"></i>${nota.texto}</span>` : "";
             return `<li id="sugestao-${i}" role="option" aria-selected="${i === ativa}" data-indice="${i}"><span>${escapar(cidade.nome)}</span>${selo}</li>`;
         }).join("");
@@ -94,7 +94,7 @@
                 .map((item) => ({ id: String(item.city_id), nome: item.name, chave: normalizar(item.name) }))
                 .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
         },
-        // Mostra o nome da cidade aberta (ou limpa, ao voltar para SP).
+        // Mostra o nome da cidade aberta (ou limpa, ao voltar para o mundo).
         mostrarNome(nome) {
             el("busca").value = nome ?? "";
         },

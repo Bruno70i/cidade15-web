@@ -1,7 +1,7 @@
 "use strict";
 
 // Camadas da cidade aberta: contorno, mapa de calor (ou pontos) e estabelecimentos.
-// Os pontos vêm do serviço de mapas (/mapas/v1), só da área que está na tela.
+// A amostra municipal vem do serviço de mapas (/mapas/v1) uma vez por categoria.
 // Cada ponto é um trecho de rua com o tempo a pé até o serviço mais próximo.
 (() => {
     const L = window.L;
@@ -17,17 +17,12 @@
     let categoria = "overall";  // "overall" = índice geral (os 4 tipos)
     let modo = "calor";         // "calor" ou "pontos"
     let mostrarLocais = true;
-    // Pontos e estabelecimentos JÁ RECEBIDOS da cidade aberta (por id). Ao mover o
-    // mapa, a API manda outra amostra; em vez de trocar (o desenho "pulava"), juntamos.
-    const pontosRecebidos = new Map(); // id -> {lat, lon, min} (min = minutos; null = sem caminho)
-    const locaisRecebidos = new Map(); // id -> estabelecimento
-    let pontos = [];                   // lista usada no desenho
+    let pontos = [];                   // amostra fixa usada no desenho
     let locais = [];
     let geracao = 0;            // muda a cada cidade aberta: respostas antigas são ignoradas
-    let controle = null;        // permite cancelar o pedido de pontos anterior
-    let espera = null;          // temporizador para não pedir a cada pixel de arrasto
+    let pedido = 0;             // descarta desenhos de categorias antigas
     let avisos = { carregando: () => {}, erro: () => {} }; // funções do app.js
-    const guardados = new Map(); // respostas já recebidas (para não pedir de novo)
+    const guardados = new Map(); // promessas das categorias da cidade atual
 
     function escapar(texto) {
         return String(texto ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -65,29 +60,30 @@
         }).addTo(camadaContorno);
     }
 
-    // ===== Pontos da área visível =====
-    function agendar(atraso = 300) {
-        if (!info) return;
-        clearTimeout(espera);
-        espera = setTimeout(carregarPontos, atraso);
-    }
-
-    // Retângulo da tela, cortado nos limites da cidade: [oeste, sul, leste, norte].
-    function areaVisivel() {
-        const tela = mapa.getBounds();
+    // ===== Amostra municipal em cache; pan/zoom não consultam a API =====
+    function areasFixas() {
+        if (info.total_nodes && info.total_nodes <= 1000) return [null];
         const [[sul, oeste], [norte, leste]] = info.bounds;
-        const caixa = [Math.max(tela.getWest(), oeste), Math.max(tela.getSouth(), sul), Math.min(tela.getEast(), leste), Math.min(tela.getNorth(), norte)];
-        if (caixa[0] >= caixa[2] || caixa[1] >= caixa[3]) return null; // a cidade está fora da tela
-        return caixa.map((valor) => Math.round(valor * 1000) / 1000);
+        const arredondar = valor => Number(valor.toFixed(6));
+        const x = [oeste, (oeste + leste) / 2, leste].map(arredondar);
+        const y = [sul, (sul + norte) / 2, norte].map(arredondar);
+        if (x[0] >= x[1] || x[1] >= x[2] || y[0] >= y[1] || y[1] >= y[2]) return [null];
+        return [[x[0],y[0],x[1],y[1]], [x[1],y[0],x[2],y[1]], [x[0],y[1],x[1],y[2]], [x[1],y[1],x[2],y[2]]];
     }
-
-    function pedirPontos(codigo, caixa, sinal) {
-        const chave = `${execucao.id}|${codigo}|${caixa.join(",")}`;
+    function pedirPontos(analise, codigo, detalhado) {
+        const chave = `${analise.id}|${analise.processed_at || ""}|${codigo}|${detalhado ? "detalhe" : "base"}`;
         if (!guardados.has(chave)) {
-            const pedido = fonte.points(execucao.id, codigo, caixa, sinal);
-            guardados.set(chave, pedido);
-            pedido.catch(() => guardados.delete(chave)); // erro não fica guardado
-            if (guardados.size > 40) guardados.delete(guardados.keys().next().value);
+            const areas = detalhado ? areasFixas() : [null];
+            const resposta = (async () => {
+                const respostas = [];
+                for (const area of areas) respostas.push(await fonte.points(analise, codigo, area));
+                return {
+                    nodes:[...new Map(respostas.flatMap(item => item.nodes).map(no => [no.id,no])).values()],
+                    services:[...new Map(respostas.flatMap(item => item.services).map(local => [local.id,local])).values()],
+                };
+            })();
+            guardados.set(chave, resposta);
+            resposta.catch(() => { if (guardados.get(chave) === resposta) guardados.delete(chave); });
         }
         return guardados.get(chave);
     }
@@ -95,28 +91,27 @@
     async function carregarPontos() {
         if (!info) return;
         const minha = geracao;
+        const meu = ++pedido;
+        const analise = execucao;
         const pedida = categoria;
-        const caixa = areaVisivel();
-        controle?.abort();
-        if (!caixa) return; // a cidade saiu da tela: mantém o que já foi desenhado
-        controle = new AbortController();
-        const meuControle = controle;
+        const detalhado = modo === "pontos";
         // No índice geral precisamos das 4 categorias (o tempo é o do serviço mais distante).
         const codigos = pedida === "overall" ? CATEGORIAS : [pedida];
-        avisos.carregando(true, "Carregando o mapa desta área…");
+        avisos.carregando(true, "Carregando o mapa da cidade…");
         try {
-            const respostas = await Promise.all(codigos.map((codigo) => pedirPontos(codigo, caixa, meuControle.signal)));
-            if (minha !== geracao || meuControle.signal.aborted || pedida !== categoria) return;
-            for (const ponto of juntarPontos(respostas, codigos)) pontosRecebidos.set(ponto.id, ponto);
-            for (const local of respostas.flatMap((resposta) => resposta.services)) locaisRecebidos.set(local.id, local);
-            pontos = [...pontosRecebidos.values()];
-            locais = [...locaisRecebidos.values()];
+            const respostas = [];
+            for (const codigo of codigos) {
+                respostas.push(await pedirPontos(analise, codigo, detalhado));
+                if (minha !== geracao || meu !== pedido) return;
+            }
+            pontos = juntarPontos(respostas, codigos);
+            locais = [...new Map(respostas.flatMap(resposta => resposta.services).map(local => [local.id, local])).values()];
             desenhar();
         } catch (erro) {
-            if (meuControle.signal.aborted || erro.name === "AbortError") return;
-            avisos.erro(erro.message || "Não foi possível carregar o mapa desta área.");
+            if (minha !== geracao || meu !== pedido) return;
+            avisos.erro(erro.message || "Não foi possível carregar o mapa da cidade.");
         } finally {
-            if (meuControle === controle) avisos.carregando(false);
+            if (minha === geracao && meu === pedido) avisos.carregando(false);
         }
     }
 
@@ -184,17 +179,14 @@
         }
     }
 
-    // Esquece os pontos e estabelecimentos recebidos (nova cidade ou nova categoria).
+    // Limpa apenas o desenho; os dados das categorias continuam em cache.
     function esquecerRecebidos() {
-        pontosRecebidos.clear();
-        locaisRecebidos.clear();
         pontos = [];
         locais = [];
     }
 
     function limpar() {
-        controle?.abort();
-        clearTimeout(espera);
+        pedido++;
         esquecerRecebidos();
         camadaContorno.clearLayers();
         camadaPontos.clearLayers();
@@ -213,26 +205,29 @@
             camadaContorno = L.layerGroup().addTo(mapa);
             camadaPontos = L.layerGroup().addTo(mapa);
             camadaLocais = L.layerGroup().addTo(mapa);
-            mapa.on("moveend", () => agendar()); // ao arrastar ou dar zoom, pede a nova área
+            mapa.on("moveend", desenharLocais); // apenas reposiciona ícones; o calor se redesenha localmente
         },
 
         // Abre a cidade: busca o contorno, enquadra e começa a carregar os pontos.
-        async abrir(novaExecucao, margens) {
+        async abrir(novaExecucao, margens, novaCategoria = "overall") {
             const minha = ++geracao;
             limpar();
+            guardados.clear();
             execucao = novaExecucao;
+            categoria = novaCategoria;
             info = null;
-            const dados = await fonte.metadata(execucao.id);
+            const dados = await fonte.metadata(novaExecucao);
             if (minha !== geracao) return;
             info = dados;
             desenharContorno();
             this.centralizar(margens);
-            agendar(0);
+            await carregarPontos();
         },
 
         fechar() {
             geracao++;
             limpar();
+            guardados.clear();
             execucao = null;
             info = null;
         },
@@ -249,13 +244,14 @@
             categoria = novaCategoria;
             esquecerRecebidos();
             desenhar();
-            agendar(0);
+            return carregarPontos();
         },
 
         trocarModo(novoModo) {
+            if (modo === novoModo) return;
             modo = novoModo;
             desenharContorno();
-            desenhar();
+            return info ? carregarPontos() : undefined;
         },
 
         trocarLocais(mostrar) {

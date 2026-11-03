@@ -5,21 +5,27 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
+  <meta name="color-scheme" content="only light">
   <title>Cidade15 · Serviços a até 15 minutos a pé</title>
-  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261102-layout-06">
-  <link rel="stylesheet" href="style.css?v=20261102-layout-06">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261102-interface-18">
+  <link rel="stylesheet" href="style.css?v=20261102-interface-18">
   <!-- Ordem importa: o Leaflet primeiro, o app.js por último (ele usa todos os outros). -->
-  <script src="vendor/leaflet/leaflet.js?v=20261102-layout-06" defer></script>
-  <script src="data-source.js?v=20261102-layout-06" defer></script>
-  <script src="map-data.js?v=20261102-layout-06" defer></script>
-  <script src="icones.js?v=20261102-layout-06" defer></script>
-  <script src="cores.js?v=20261102-layout-06" defer></script>
-  <script src="calor.js?v=20261102-layout-06" defer></script>
-  <script src="mapa-estado.js?v=20261102-layout-06" defer></script>
-  <script src="mapa-cidade.js?v=20261102-layout-06" defer></script>
-  <script src="simulacao.js?v=20261102-layout-06" defer></script>
-  <script src="busca.js?v=20261102-layout-06" defer></script>
-  <script src="app.js?v=20261102-layout-06" defer></script>
+  <script src="vendor/leaflet/leaflet.js?v=20261102-interface-18" defer></script>
+  <script src="browser-cache.js?v=20261102-interface-18" defer></script>
+  <script src="data-source.js?v=20261102-interface-18" defer></script>
+  <script src="map-data.js?v=20261102-interface-18" defer></script>
+  <script src="icones.js?v=20261102-interface-18" defer></script>
+  <script src="cores.js?v=20261102-interface-18" defer></script>
+  <script src="calor.js?v=20261102-interface-18" defer></script>
+  <script src="map-viewport.js?v=20261102-interface-18" defer></script>
+  <script src="mapa-mundo.js?v=20261102-interface-18" defer></script>
+  <script src="mapa-cidade.js?v=20261102-interface-18" defer></script>
+  <script src="simulacao-vista.js?v=20261102-interface-18" defer></script>
+  <script src="simulacao-locais.js?v=20261102-interface-18" defer></script>
+  <script src="simulacao.js?v=20261102-interface-18" defer></script>
+  <script src="busca.js?v=20261102-interface-18" defer></script>
+  <script src="navegacao.js?v=20261102-interface-18" defer></script>
+  <script src="app.js?v=20261102-interface-18" defer></script>
 </head>
 
 <body>
@@ -35,7 +41,6 @@
   </button>
   <nav id="menu" class="flutuante menu" aria-label="Menu" hidden>
     <p class="marca">Cidade de <span>15</span> minutos</p>
-    <button class="item-menu" type="button" data-painel="comparar"><i data-icone="grafico"></i>Comparar cidades</button>
     <button class="item-menu" type="button" data-painel="metodologia"><i data-icone="livro"></i>Como funciona</button>
     <p class="menu-rotulo" id="rotulo-modo">Visualização da cidade</p>
     <div class="alternador" role="group" aria-labelledby="rotulo-modo">
@@ -44,8 +49,6 @@
     </div>
     <label class="chave"><input type="checkbox" id="mostrar-locais" checked><i data-icone="local"></i>Mostrar
       estabelecimentos</label>
-    <p class="creditos">TCC · Mensuração Computacional de Acessibilidade Urbana<br>Guilherme Silva, Pedro Henrique
-      e Bruno Nascimento<br>Orientação: Prof. José Bueno</p>
   </nav>
 
   <!-- Topo: busca com sugestões -->
@@ -58,16 +61,17 @@
   <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
   <div id="carregando" class="carregando" aria-hidden="true" hidden><span></span><b id="carregando-texto">Carregando…</b></div>
 
-  <!-- Canto superior direito: legenda das cores do mapa (régua em pé: melhor em cima) -->
-  <div id="legenda" class="flutuante legenda" hidden>
-    <p><span id="legenda-titulo" class="so-computador"></span><span id="legenda-titulo-curto" class="so-celular"></span></p>
-    <div class="escala">
-      <div id="legenda-regua" class="regua"></div>
-      <div id="legenda-marcas" class="marcas"></div>
-    </div>
+  <!-- Legenda compacta: clique ou toque na escala para ver a explicação. -->
+  <details id="legenda" class="flutuante legenda" hidden>
+    <summary aria-label="Legenda de cores" aria-describedby="legenda-marcas">
+      <span id="legenda-titulo" class="legenda-titulo"></span>
+      <span class="escala">
+        <span id="legenda-regua" class="regua" aria-hidden="true"></span>
+        <span id="legenda-marcas" class="marcas"></span>
+      </span>
+    </summary>
     <ul id="legenda-itens"></ul>
-    <small id="legenda-nota"></small>
-  </div>
+  </details>
 
   <!-- Lateral direita: zoom e centralizar -->
   <div class="controles" role="group" aria-label="Controles do mapa">
@@ -85,11 +89,11 @@
   <section id="cartao" class="flutuante cartao" aria-label="Métricas">
     <!-- Seta para minimizar o card (minimizado, só fica o que tem a classe "sempre-visivel") -->
     <button id="recolher-cartao" class="alca" type="button" aria-expanded="true" aria-label="Minimizar o painel"><i data-icone="seta"></i></button>
-    <!-- Sem cidade aberta: mapa de SP -->
+    <!-- Sem cidade aberta: mapa global -->
     <div id="cartao-estado">
-      <h2 class="titulo-icone sempre-visivel"><i data-icone="mapa"></i>Mapa de SP</h2>
-      <p class="suave">Cada cidade está pintada pela parte da população que chega a pé, em até 15 minutos, aos
-        serviços marcados. Clique numa cidade ou pesquise pelo nome.</p>
+      <h2 class="titulo-icone sempre-visivel"><i data-icone="mapa"></i>Mapa global</h2>
+      <p class="suave">Explore as cidades analisadas no mundo. As cores mostram a parcela da população com acesso
+        aos serviços marcados. Clique numa cidade ou pesquise pelo nome.</p>
       <fieldset class="combinacao" id="combinacao">
         <legend>Pintar pelo acesso a</legend>
         <label><input type="checkbox" value="health" checked><i data-icone="health"></i>Saúde</label>
@@ -104,7 +108,7 @@
     <div id="cartao-cidade" hidden>
       <div class="cartao-topo sempre-visivel">
         <h2 class="titulo-icone"><i data-icone="local"></i><span id="cidade-nome">Métricas</span></h2>
-        <button id="voltar" class="botao-texto" type="button"><i data-icone="voltar"></i>Mapa de SP</button>
+        <button id="voltar" class="botao-texto" type="button"><i data-icone="voltar"></i>Mapa global</button>
       </div>
       <!-- Botões de categoria: só um fica marcado (aria-pressed="true") -->
       <div class="chips" id="categorias" role="group" aria-label="Categoria">
@@ -114,24 +118,28 @@
         <button type="button" data-categoria="food" aria-pressed="false"><i data-icone="food"></i>Alimentação</button>
         <button type="button" data-categoria="culture" aria-pressed="false"><i data-icone="culture"></i>Cultura</button>
       </div>
+      <p class="valor-contexto" id="valor-contexto">População com acesso</p>
       <p class="valor sempre-visivel" id="valor">—</p>
       <p class="impacto" id="impacto" hidden></p>
       <p class="valor-legenda"><i data-icone="pessoas"></i><span id="valor-legenda"></span></p>
-      <!-- Barra: azul = acesso hoje, vermelho = ganho com a simulação, cinza = sem acesso -->
-      <div class="barra" id="barra">
-        <span class="seg seg-original" data-seg="original" tabindex="0"></span>
-        <span class="seg seg-impacto" data-seg="impacto" tabindex="0"></span>
-        <span class="seg seg-resto" data-seg="resto" tabindex="0"></span>
-        <div class="dica" id="dica" role="tooltip" hidden></div>
+      <!-- Azul: acesso atual; verde: ganho percentual; vermelho: sem acesso em ate 15 min. -->
+      <div class="barra" id="barra" role="group" aria-label="Distribuição de pessoas com acesso">
+        <button type="button" class="seg seg-original" data-seg="original" aria-describedby="dica"></button>
+        <button type="button" class="seg seg-impacto" data-seg="impacto" aria-describedby="dica"></button>
+        <button type="button" class="seg seg-resto" data-seg="resto" aria-describedby="dica"></button>
       </div>
+      <p class="dica" id="dica" role="status" aria-live="polite" hidden></p>
       <ul class="legenda-barra">
-        <li><i class="cor-original"></i>Valor original</li>
-        <li><i class="cor-impacto"></i>Impacto simulado</li>
-        <li><i class="cor-resto"></i>Sem acesso</li>
+        <li><i class="cor-original"></i><span id="barra-original-rotulo">Já têm acesso</span></li>
+        <li><i class="cor-impacto"></i>Passariam a ter acesso</li>
+        <li><i class="cor-resto"></i><span id="barra-resto-rotulo">Sem acesso em até 15 min</span></li>
       </ul>
+      <div id="sim-resultado-acoes" class="resultado-acoes" hidden>
+        <button id="sim-ver-resultado" class="botao primario" type="button">Ver resultado da simulação</button>
+        <button id="sim-ir-locais" class="botao-texto" type="button">Ver locais adicionados no mapa</button>
+      </div>
       <details class="simular">
         <summary><i data-icone="varinha"></i>Simular novos locais</summary>
-        <p class="suave">Escolha o tipo, clique em <b>Adicionar</b> e depois no mapa, onde o novo local ficaria.</p>
         <div class="chips" id="sim-tipos" role="group" aria-label="Tipo do novo local">
           <button type="button" data-tipo="health" aria-pressed="true"><i data-icone="health"></i>Saúde</button>
           <button type="button" data-tipo="education" aria-pressed="false"><i data-icone="education"></i>Educação</button>
@@ -139,41 +147,35 @@
           <button type="button" data-tipo="culture" aria-pressed="false"><i data-icone="culture"></i>Cultura</button>
         </div>
         <div class="linha">
-          <button id="sim-adicionar" class="botao" type="button" aria-pressed="false"><i data-icone="mais"></i><span>Adicionar</span></button>
+          <button id="sim-adicionar" class="botao" type="button" aria-pressed="false"><i data-icone="mais"></i><span>Adicionar local</span></button>
           <button id="sim-calcular" class="botao primario" type="button" disabled><i data-icone="varinha"></i>Calcular impacto</button>
           <button id="sim-limpar" class="botao-texto" type="button" disabled>Limpar</button>
         </div>
-        <p id="sim-mensagem" class="suave" aria-live="polite"></p>
+        <p id="sim-mensagem" class="suave" role="status" aria-live="polite" hidden></p>
       </details>
     </div>
   </section>
 
-  <!-- Canto inferior direito: informações e comparação -->
-  <button id="botao-info" class="flutuante botao-redondo" type="button" aria-label="Informações e comparação"
+  <div id="sim-mapa-acoes" class="flutuante sim-mapa-acoes" role="region" aria-label="Adicionar locais no mapa">
+    <p id="sim-mapa-status" role="status" aria-live="polite"></p>
+    <p id="sim-mapa-feedback" role="status" aria-live="polite" hidden></p>
+    <div>
+      <button id="sim-mapa-cancelar" class="botao" type="button">Cancelar</button>
+      <button id="sim-mapa-concluir" class="botao primario" type="button">Concluir</button>
+    </div>
+  </div>
+
+  <!-- Canto inferior direito: informações da análise -->
+  <button id="botao-info" class="flutuante botao-redondo" type="button" aria-label="Informações da análise"
     aria-expanded="false" aria-controls="info">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>
   </button>
   <section id="info" class="flutuante info" aria-labelledby="info-titulo" hidden>
     <div class="info-topo">
-      <h2 id="info-titulo" class="titulo-icone"><i data-icone="info"></i>Informações e comparação</h2>
+      <h2 id="info-titulo" class="titulo-icone"><i data-icone="info"></i>Informações da análise</h2>
       <button class="botao-fechar" type="button" data-fechar="info" aria-label="Fechar">×</button>
     </div>
     <div id="info-corpo"></div>
-  </section>
-
-  <!-- Painel "Comparar cidades" (abre pelo menu) -->
-  <section id="painel-comparar" class="painel" aria-labelledby="comparar-titulo" hidden>
-    <div class="painel-topo">
-      <h2 id="comparar-titulo" class="titulo-icone"><i data-icone="grafico"></i>Comparar cidades</h2>
-      <button class="botao-fechar" type="button" data-fechar="painel-comparar" aria-label="Fechar">×</button>
-    </div>
-    <p class="suave">Percentual da população de cada cidade que chega a pé, em até 15 minutos, a cada tipo de
-      serviço. Clique no nome de uma cidade para abri-la no mapa ou no título de uma coluna para ordenar.</p>
-    <div class="filtro"><label for="filtro-cidades">Filtrar cidades</label><input id="filtro-cidades" type="search"
-        placeholder="Nome da cidade" autocomplete="off"></div>
-    <div class="tabela-rolagem" tabindex="0" aria-label="Resultados das cidades">
-      <table id="tabela-cidades" class="tabela-cidades"></table>
-    </div>
   </section>
 
   <!-- Painel "Como funciona" (abre pelo menu) -->
@@ -219,7 +221,7 @@
         geral não é a média dos quatro percentuais.</p>
     </details>
     <details>
-      <summary>Por que a quantidade de pessoas é uma estimativa?</summary>
+      <summary>O que os percentuais de acesso representam?</summary>
       <p>O cálculo usa a população de pequenas áreas do IBGE, representadas por pontos próximos da rede de ruas. Ele
         não mede o trajeto individual de cada morador. A população considerada depende do arquivo e do recorte usados
         na análise.</p>
@@ -232,11 +234,15 @@
     </details>
     <details>
       <summary>O que as cores do mapa representam?</summary>
-      <p>Os dois mapas usam o mesmo degradê: vermelho é pior e verde-azulado é melhor. No mapa de SP, a cor compara
+      <p>Os dois mapas usam o mesmo degradê: vermelho é pior e verde-azulado é melhor. No mapa global, a cor compara
         as cidades entre si (a pior fica vermelha e a melhor, verde-azulada). Na cidade aberta, o mapa de calor mostra
         o tempo a pé até o serviço mais próximo: cada parte do mapa faz a média dos pontos de rua ao redor, e a cor
         areia, no meio da régua, é o limite de 15 minutos. Esses pontos não representam casas ou moradores, e a
-        quantidade usada é uma amostra para manter a navegação leve. Os ícones marcam os estabelecimentos.</p>
+        quantidade usada é uma amostra da cidade inteira para manter a navegação leve. Ao selecionar Pontos,
+        a amostra é ampliada por quatro áreas fixas da cidade, com até 4.000 nós por categoria. Os dados são
+        guardados e reutilizados ao aproximar ou mover o mapa, sem novas consultas por movimento. A amostra
+        não representa a rede completa. Os indicadores usam a análise
+        completa, independentemente da amostra exibida. Os ícones marcam os estabelecimentos.</p>
     </details>
     <details>
       <summary>Posso somar as pessoas das quatro categorias?</summary>
@@ -250,10 +256,13 @@
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap: rede de ruas
           e locais mapeados.</a><br>
         <a href="https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais.html"
-          target="_blank" rel="noopener">IBGE: contornos dos municípios usados no mapa de SP.</a></p>
+          target="_blank" rel="noopener">IBGE: grade populacional e referências territoriais brasileiras.</a></p>
+      <p>Os contornos das cidades são fornecidos pela API do projeto, inclusive para cidades de outros países.</p>
       <p>A API do projeto disponibiliza os resultados já calculados. Eles são consultados ao abrir a página e
         conferidos de novo a cada 5 minutos enquanto ela estiver aberta. A navegação não executa novos cálculos nem
-        altera o banco; a simulação calcula um "e se" sem gravar nada.</p>
+        altera o banco; a simulação calcula um "e se" sem gravar nada. Os dados do mapa da cidade são guardados
+        no navegador por até um dia, quando o armazenamento está disponível. Mover o mapa não consulta novamente
+        esses pontos. As imagens das ruas (mapa-base) ainda podem ser baixadas ao navegar por uma área nova.</p>
     </details>
     <p class="suave" id="nota-fonte"></p>
   </section>

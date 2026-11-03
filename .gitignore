@@ -179,3 +179,9 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Anotações internas (não vão para o GitHub, que é público)
+# Relatórios de publicação: têm caminhos e processos do servidor
+PUBLICACAO-*.md
+# Anotações de trabalho
+docs/superpowers/
