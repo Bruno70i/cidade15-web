@@ -1,0 +1,20 @@
+{
+  "execution_id": 214,
+  "input": {
+    "lat": -24.050275699999997,
+    "lng": -46.2636956
+  },
+  "result": {
+    "lat": -24.0503257,
+    "lng": -46.2637456,
+    "nodeId": "713772",
+    "distancia": 7.529131232704518
+  },
+  "no_remote_post": true,
+  "server_package_read_only_check": {
+    "execution_id": 214,
+    "nearest_graph_node_index": 4861,
+    "distance_in_server_package_m": 0.0,
+    "package_nodes": 7199
+  }
+}
