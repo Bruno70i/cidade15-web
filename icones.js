@@ -20,6 +20,7 @@
         caminhar: '<circle cx="13" cy="4.5" r="1.8"/><path d="m10 21 2-6 3 3v3"/><path d="m8 12 2-4h4l3 4h2"/><path d="m10 8-1 5 3 2"/>',
         calendario: '<path d="M4 6h16v14H4Z"/><path d="M4 10h16M8 3v4M16 3v4"/>',
         grafico: '<path d="M3 20h18"/><path d="M6 20v-8M11 20V5M16 20v-11M20 20v-5"/>',
+        trofeu: '<path d="M7 4h10v7a5 5 0 0 1-10 0V4ZM7 6H3v2a4 4 0 0 0 4 4m10-6h4v2a4 4 0 0 1-4 4M12 16v4m-4 0h8"/>',
         livro: '<path d="M4 5c3-1.5 5.5-1.5 8 0v15c-2.5-1.5-5-1.5-8 0Z"/><path d="M12 5c2.5-1.5 5-1.5 8 0v15c-3-1.5-5.5-1.5-8 0"/>',
         calor: '<path d="M12 3c1 3 4.5 4.5 4.5 9a4.5 4.5 0 0 1-9 0c0-2.2 1-3.4 1.8-4.4.4 1.8 1.4 2.6 2.4 2.6 0-2.7-.6-4.8.3-7.2Z"/>',
         pontos: '<circle cx="6" cy="7" r="1.6"/><circle cx="13" cy="5" r="1.6"/><circle cx="18" cy="11" r="1.6"/><circle cx="9" cy="13" r="1.6"/><circle cx="15" cy="18" r="1.6"/><circle cx="6" cy="19" r="1.6"/>',

@@ -20,7 +20,7 @@ function navegador(initial='http://localhost:8080/') {
     get state(){return entries[index].state;},
     replaceState(state,title,url){entries[index]={url:new URL(url,current()).href,state};},
     pushState(state,title,url){const target=new URL(url,current()).href;entries.splice(++index,entries.length,{url:target,state});},
-    back:()=>traverse(-1),forward:()=>traverse(1),
+    back:()=>traverse(-1),forward:()=>traverse(1),go:traverse,
   };
   const context={window:{history,location,addEventListener:(name,fn)=>{events[name]=fn;}},URLSearchParams,Set};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../navegacao.js'),'utf8'),context);
@@ -60,9 +60,41 @@ test('no mapa global o usuario consegue sair normalmente com o proximo voltar',a
   assert.equal(n.entries.length,2);n.history.back();await n.flush();
   assert.equal(n.location.href,'https://anterior.example/');assert.equal(n.views.length,0);
 });
+test('voltar da cidade restaura a regiao mesmo apos trocar de cidade e categoria',async()=>{
+  const n=navegador();
+  const vista={centro:[-22.3,-48.1],zoom:7};
+  n.nav.iniciar();
+  n.nav.abrirCidade('2','health',vista);
+  n.nav.abrirCidade('5','culture');
+  n.nav.atualizarCategoria('overall');
+  n.nav.voltarGlobal();
+  await n.flush();
+  assert.equal(n.views.at(-1).cidade,null);
+  assert.deepEqual(n.views.at(-1).vista,vista);
+  n.history.forward();
+  await n.flush();
+  assert.equal(n.views.at(-1).cidade,'5');
+  assert.equal(n.views.at(-1).categoria,'overall');
+  assert.deepEqual(n.views.at(-1).vista,vista);
+});
 test('link da metodologia continua reconhecido e categorias invalidas usam Geral',()=>{
   const n=navegador('http://localhost:8080/#metodologia');
   assert.equal(n.nav.iniciar().metodologia,true);
   n.nav.abrirCidade('2','invalida');assert.equal(n.nav.ler().categoria,'overall');
   assert.equal(n.location.hash,'#cidade=2');
+});
+
+test('a busca em outro continente volta pelos ancestrais da nova cidade',async()=>{
+  const n=navegador();
+  n.nav.iniciar();
+  n.nav.abrirHierarquia(['america','brasil','sp'],'5');
+  n.nav.abrirHierarquia(['europa','franca','ile-de-france'],'647');
+  await n.flush();
+  assert.equal(n.nav.ler().cidade,'647');
+  for (const destino of ['ile-de-france','franca','europa',undefined]) {
+    n.history.back();
+    await n.flush();
+    assert.equal(n.nav.ler().caminho.at(-1),destino);
+    assert.equal(n.nav.ler().cidade,null);
+  }
 });
