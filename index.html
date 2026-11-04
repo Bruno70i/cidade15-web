@@ -8,24 +8,25 @@
   <meta name="color-scheme" content="only light">
   <title>Cidade15 · Serviços a até 15 minutos a pé</title>
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261102-interface-18">
-  <link rel="stylesheet" href="style.css?v=20261102-interface-18">
+  <link rel="stylesheet" href="style.css?v=20261103-seletor-regional">
   <!-- Ordem importa: o Leaflet primeiro, o app.js por último (ele usa todos os outros). -->
   <script src="vendor/leaflet/leaflet.js?v=20261102-interface-18" defer></script>
   <script src="browser-cache.js?v=20261102-interface-18" defer></script>
   <script src="data-source.js?v=20261102-interface-18" defer></script>
   <script src="map-data.js?v=20261102-interface-18" defer></script>
-  <script src="icones.js?v=20261102-interface-18" defer></script>
+  <script src="icones.js?v=20261103-menu-ranking" defer></script>
   <script src="cores.js?v=20261102-interface-18" defer></script>
   <script src="calor.js?v=20261102-interface-18" defer></script>
   <script src="map-viewport.js?v=20261102-interface-18" defer></script>
-  <script src="mapa-mundo.js?v=20261102-interface-18" defer></script>
+  <script src="regioes.js?v=20261103-seletor-regional" defer></script>
+  <script src="mapa-mundo.js?v=20261103-seletor-regional" defer></script>
   <script src="mapa-cidade.js?v=20261102-interface-18" defer></script>
   <script src="simulacao-vista.js?v=20261102-interface-18" defer></script>
   <script src="simulacao-locais.js?v=20261102-interface-18" defer></script>
   <script src="simulacao.js?v=20261102-interface-18" defer></script>
   <script src="busca.js?v=20261102-interface-18" defer></script>
-  <script src="navegacao.js?v=20261102-interface-18" defer></script>
-  <script src="app.js?v=20261102-interface-18" defer></script>
+  <script src="navegacao.js?v=20261103-hierarquia" defer></script>
+  <script src="app.js?v=20261103-seletor-regional" defer></script>
 </head>
 
 <body>
@@ -41,7 +42,11 @@
   </button>
   <nav id="menu" class="flutuante menu" aria-label="Menu" hidden>
     <p class="marca">Cidade de <span>15</span> minutos</p>
-    <button class="item-menu" type="button" data-painel="metodologia"><i data-icone="livro"></i>Como funciona</button>
+    <details class="ranking-global">
+      <summary class="item-menu"><i data-icone="trofeu"></i>Ranking global</summary>
+      <p class="suave">Cidades analisadas, ordenadas pela parcela da população com acesso aos quatro tipos de serviço.</p>
+      <ol id="ranking-cidades" aria-label="Cidades por índice Geral"></ol>
+    </details>
     <p class="menu-rotulo" id="rotulo-modo">Visualização da cidade</p>
     <div class="alternador" role="group" aria-labelledby="rotulo-modo">
       <button type="button" data-modo="calor" aria-pressed="true"><i data-icone="calor"></i>Calor</button>
@@ -75,7 +80,7 @@
 
   <!-- Lateral direita: zoom e centralizar -->
   <div class="controles" role="group" aria-label="Controles do mapa">
-    <div class="flutuante grupo-zoom">
+    <div id="grupo-zoom" class="flutuante grupo-zoom" hidden>
       <button id="zoom-mais" type="button" aria-label="Aproximar">+</button>
       <button id="zoom-menos" type="button" aria-label="Afastar">−</button>
     </div>
@@ -91,9 +96,12 @@
     <button id="recolher-cartao" class="alca" type="button" aria-expanded="true" aria-label="Minimizar o painel"><i data-icone="seta"></i></button>
     <!-- Sem cidade aberta: mapa global -->
     <div id="cartao-estado">
-      <h2 class="titulo-icone sempre-visivel"><i data-icone="mapa"></i>Mapa global</h2>
-      <p class="suave">Explore as cidades analisadas no mundo. As cores mostram a parcela da população com acesso
-        aos serviços marcados. Clique numa cidade ou pesquise pelo nome.</p>
+      <div class="cartao-topo sempre-visivel">
+        <h2 class="titulo-icone"><i data-icone="mapa"></i><span id="regiao-titulo">Mapa global</span></h2>
+        <button id="voltar-regiao" class="botao-texto" type="button" hidden></button>
+      </div>
+      <select id="seletor-regiao" class="seletor-regiao sempre-visivel" aria-label="Escolher região" hidden></select>
+      <p id="regiao-orientacao" class="suave">Clique em um continente no mapa para começar, ou pesquise uma cidade pelo nome.</p>
       <fieldset class="combinacao" id="combinacao">
         <legend>Pintar pelo acesso a</legend>
         <label><input type="checkbox" value="health" checked><i data-icone="health"></i>Saúde</label>
@@ -108,7 +116,7 @@
     <div id="cartao-cidade" hidden>
       <div class="cartao-topo sempre-visivel">
         <h2 class="titulo-icone"><i data-icone="local"></i><span id="cidade-nome">Métricas</span></h2>
-        <button id="voltar" class="botao-texto" type="button"><i data-icone="voltar"></i>Mapa global</button>
+        <button id="voltar" class="botao-texto" type="button"><i data-icone="voltar"></i><span id="voltar-rotulo">Mapa global</span></button>
       </div>
       <!-- Botões de categoria: só um fica marcado (aria-pressed="true") -->
       <div class="chips" id="categorias" role="group" aria-label="Categoria">

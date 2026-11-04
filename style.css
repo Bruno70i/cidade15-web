@@ -46,14 +46,17 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 #mapa { position: fixed; inset: 0; z-index: 0; background: var(--fundo); }
 body.adicionando #mapa { cursor: crosshair; }
 .leaflet-container { font: inherit; }
-.regiao-analisada { background: transparent; border: 0; }
-.regiao-analisada-card { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 7px 11px 7px 6px; border: 1px solid rgba(47,111,237,.25); border-radius: 14px; background: #fff; color: var(--texto); box-shadow: var(--sombra); white-space: nowrap; }
-.regiao-analisada-ponto { width: 12px; height: 12px; flex: 0 0 12px; border: 3px solid #fff; border-radius: 50%; background: var(--azul); box-shadow: 0 0 0 3px rgba(47,111,237,.22); }
-.regiao-analisada-card strong { display: block; font-size: .8125rem; line-height: 1.25; }
-.regiao-analisada-card small { display: block; margin-top: 2px; font-size: .6875rem; line-height: 1.25; color: var(--texto-suave); }
-.regiao-analisada:focus-visible { outline: 3px solid var(--azul); outline-offset: 4px; border-radius: 14px; }
+.regiao-analisada { display: grid; place-items: center; border-radius: 50%; }
+.regiao-analisada-ponto { width: 16px; height: 16px; border: 3px solid #fff; border-radius: 50%; background: var(--azul); box-shadow: 0 0 0 4px rgba(47,111,237,.25); }
+.regiao-analisada:hover .regiao-analisada-ponto { box-shadow: 0 0 0 6px rgba(47,111,237,.35); }
+.regiao-analisada:focus-visible { outline: 3px solid var(--azul); }
 .mapa-base { filter: saturate(.7) brightness(1.04) contrast(.92); }
 .leaflet-tooltip { border: 0; border-radius: 8px; box-shadow: var(--sombra); font-size: .8125rem; padding: 6px 10px; color: var(--texto); }
+@media (hover: hover) {
+  .leaflet-interactive.municipio-analisado:hover { filter: brightness(1.2); }
+  .contorno-pais.pais-selecionavel:hover { fill-opacity: .28; }
+}
+.leaflet-container .leaflet-interactive.contorno-pais:not(.pais-selecionavel) { pointer-events: none; }
 .leaflet-control-attribution { font-size: 10px; background: rgba(255, 255, 255, .8) !important; }
 .contorno-cidade { filter: drop-shadow(0 0 6px rgba(47, 111, 228, .55)); }
 /* Ícones dos estabelecimentos no mapa: círculo branco com o desenho da categoria */
@@ -87,12 +90,24 @@ body.adicionando #mapa { cursor: crosshair; }
 .botao.primario:hover:not(:disabled) { background: var(--azul-escuro); }
 .botao-texto { border: 0; background: none; padding: 4px 0; color: var(--azul-escuro); font-weight: 600; font-size: .875rem; text-align: left; }
 .botao-texto:hover:not(:disabled) { text-decoration: underline; }
+.ranking-global summary { cursor: pointer; list-style: none; }
+.ranking-global summary::-webkit-details-marker { display: none; }
+.ranking-global ol { max-height: min(32dvh, 260px); overflow-y: auto; padding-left: 2.75rem; margin: 0; }
+.ranking-global li { padding-right: 6px; }
+.ranking-global li::marker { color: var(--texto-suave); font-variant-numeric: tabular-nums; }
+.ranking-global li button {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  width: 100%; min-height: 44px; padding: 6px; border: 0; border-radius: 6px;
+  background: transparent; text-align: left; font-size: .875rem;
+}
+.ranking-global li button:hover { background: var(--superficie-suave); }
+.ranking-global li small { display: block; color: var(--texto-suave); }
 .botao-fechar { border: 0; background: none; font-size: 1.6rem; line-height: 1; padding: 2px 8px; border-radius: 8px; color: var(--texto-suave); }
 .botao-fechar:hover { background: var(--superficie-suave); }
 
 /* Menu (canto superior esquerdo) */
 #botao-menu { top: var(--margem); left: var(--margem); }
-.menu { z-index: 1100; top: calc(var(--margem) + 60px); left: var(--margem); width: 290px; padding: 18px; display: grid; gap: 4px; }
+.menu { z-index: 1100; top: calc(var(--margem) + 60px); left: var(--margem); width: 290px; padding: 18px; display: grid; gap: 4px; max-height: calc(100dvh - var(--margem) - 76px); overflow-y: auto; }
 .marca { margin: 0 0 10px; font-weight: 700; font-size: 1.05rem; }
 .marca span { color: var(--azul); }
 .item-menu { display: flex; align-items: center; gap: 10px; border: 0; background: none; text-align: left; padding: 9px 10px; border-radius: 10px; font-weight: 600; }
@@ -173,6 +188,11 @@ body.adicionando #mapa { cursor: crosshair; }
 }
 .cartao-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .cartao-topo h2 { min-width: 0; font-size: 1.2rem; }
+.seletor-regiao {
+  width: 100%; min-height: 44px; margin-top: 10px; padding: 0 12px;
+  border: 1px solid var(--borda); border-radius: 10px; background: #f5f7fb;
+  color: var(--texto); font: inherit; cursor: pointer;
+}
 .cartao-topo #voltar { flex: none; font-weight: 500; }
 /* Seta no topo do card: minimiza (e abre de novo) */
 .alca { display: flex; justify-content: center; align-items: center; width: 100%; min-height: 28px; margin: -12px 0 10px; padding: 0; border: 0; background: none; color: var(--texto); }

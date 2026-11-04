@@ -27,6 +27,7 @@ test('a visao geral enquadra o mundo e usa IDs para cidades de paises diferentes
 
 async function destaquesGlobais() {
   let boundaryCalls=0,scale=2,west=-180,east=180;
+  const rotas=[];
   const markers=[],handlers={},layers=new Set(),enquadramentos=[];
   const summary=[{city_id:1,name:'Santos',country:'Brazil',selected_coverage_percentage:10},
     {city_id:2,name:'Guaruja',country:'Brazil',selected_coverage_percentage:20},
@@ -42,7 +43,7 @@ async function destaquesGlobais() {
   }
   const map={getSize:()=>({x:720,y:600}),invalidateSize(){},getZoom:()=>2,
     getBounds:()=>({getWest:()=>west,getEast:()=>east}),
-    latLngToContainerPoint:position=>{const lat=position.lat??position[0],lng=position.lng??position[1];return {x:(lng-west)*scale,y:(90-lat)*scale};},
+    latLngToContainerPoint:position=>{const lat=position.lat??position[0],lng=position.lng??position[1];return {x:(lng-west)*scale,y:(90-lat)*Math.min(scale,2)};},
     on:(events,fn)=>{for(const event of events.split(' '))handlers[event]=fn;},hasLayer:layer=>layers.has(layer),
     removeLayer(layer){layers.delete(layer);},fitBounds(b,options){enquadramentos.push({bounds:b,options});}};
   const context={window:{CityMapViewport:{showWorld(){}},CityDataSource:{boundaries:async()=>{boundaryCalls++;return {features};}},
@@ -54,8 +55,8 @@ async function destaquesGlobais() {
     }},document:{querySelectorAll:()=>['health','education','food','culture'].map(value=>({value,addEventListener(){}})),getElementById:()=>({textContent:''})},Intl,Map,Set,Number,Math};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../mapa-mundo.js'),'utf8'),context);
   const world=context.window.MapaMundo;
-  await world.iniciar({mapaDaTela:map,resumo:summary,aoEscolherCidade:()=>{throw new Error('destaque deve aproximar, sem escolher uma cidade arbitraria');}});
-  return {world,markers,handlers,enquadramentos,get calls(){return boundaryCalls;},view(s,w=-180,e=180){scale=s;west=w;east=e;handlers.moveend?.();handlers.zoomend?.();}};
+  await world.iniciar({mapaDaTela:map,resumo:summary,aoAbrirRegiao:rota=>rotas.push(rota),aoEscolherCidade:()=>{throw new Error('destaque deve aproximar, sem escolher uma cidade arbitraria');}});
+  return {world,markers,handlers,enquadramentos,context,rotas,get calls(){return boundaryCalls;},view(s,w=-180,e=180){scale=s;west=w;east=e;handlers.moveend?.();handlers.zoomend?.();}};
 }
 
 test('zoom distante indica cada regiao analisada uma vez e clicar aproxima os contornos',async()=>{
@@ -93,4 +94,35 @@ test('aproximar usa as margens atuais apos mudar a largura ou recolher o painel'
   t.markers[0].click();assert.equal(t.enquadramentos[0].options.paddingTopLeft?.[0],460);
   esquerda=16;
   t.markers[0].click();assert.equal(t.enquadramentos[1].options.paddingTopLeft?.[0],16);
+});
+
+test('paises ficam selecionaveis sem sobrepor cartoes ao mapa',async()=>{
+  const t=await destaquesGlobais();
+  t.context.window.RegioesMapa={obter:()=>null,filhas:()=>[{id:"pais:FRA"},{id:"pais:BEL"}]};
+  t.world.mostrar({});
+  assert.equal(t.markers.length,0);
+});
+
+test('tocar na China a partir da Europa abre o caminho Asia > China',async()=>{
+  const t=await destaquesGlobais();
+  const europa={id:'continente:Europe',bounds:{},caminho:['continente:Europe']};
+  const china={id:'pais:CHN',caminho:['continente:Asia','pais:CHN']};
+  const feature={properties:{codigo:'CHN',nomes:['China']}};
+  t.context.window.CityMapViewport.resize=()=>{};
+  t.context.window.RegioesMapa={
+    obter:id=>id===europa.id?europa:id===china.id?china:null,
+    filhas:()=>[],
+    carregarPaises:async()=>({features:[feature]}),
+  };
+  let tocar;
+  t.context.window.L.geoJSON=(geo,options)=>{
+    const classes={toggle(){}};
+    const forma={feature,on:(_,fn)=>{tocar=fn;},getElement:()=>({classList:classes,setAttribute(){}})};
+    options.onEachFeature(feature,forma);
+    return {addTo(){},bringToBack(){},eachLayer(fn){fn(forma);}};
+  };
+  t.world.mostrar({},null,europa.caminho);
+  await new Promise(resolve=>setImmediate(resolve));
+  tocar();
+  assert.deepEqual(t.rotas,[china.caminho]);
 });

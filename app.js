@@ -133,7 +133,7 @@
         <p class="suave">O índice geral é a parte da população que chega
         aos 4 tipos de serviço (saúde, educação, alimentação e cultura) em até 15 minutos a pé.</p>
         <p class="suave">Pesquise uma cidade ou selecione-a no mapa para consultar os resultados da análise.</p>
-        <button class="botao-texto" type="button" data-painel="metodologia">Como funciona o cálculo</button>`;
+        <button class="botao-texto" type="button" data-painel="metodologia">${window.Icones.svg("livro")}Como funciona o cálculo</button>`;
       return;
     }
     const execucao = estado.latest.execution;
@@ -162,7 +162,7 @@
         <li>${window.Icones.svg("calendario")}<span>Análise de ${escapar(dataBR.format(new Date(execucao.processed_at)))}</span></li>
       </ul>
       <p class="suave">A simulação compara percentuais de acesso. As cores do mapa representam a situação atual.</p>
-      <button class="botao-texto" type="button" data-painel="metodologia">Como funciona o cálculo</button>`;
+      <button class="botao-texto" type="button" data-painel="metodologia">${window.Icones.svg("livro")}Como funciona o cálculo</button>`;
   }
 
   // ===== Legenda do canto da tela =====
@@ -221,7 +221,7 @@
     }
   }
 
-  function voltarParaMundo() {
+  function voltarParaMundo(vista, caminho) {
     pedidoCidade++;
     fecharPaineis();
     alternar($("botao-menu"), $("menu"), false);
@@ -232,21 +232,61 @@
     estado.latest = null;
     window.Simulacao.reset(null);
     window.MapaCidade.fechar();
-    window.MapaMundo.mostrar(margens);
     window.Busca.mostrarNome("");
     carregando(false);
     desenharCartao();
+    desenharNavegacaoRegional(caminho);
+    window.MapaMundo.mostrar(margens, vista, caminho);
     desenharInfo();
     desenharLegenda();
+  }
+
+  function navegarParaCidade(id, categoria = estado.categoria) {
+    const caminho = window.RegioesMapa.caminhoCidade(id);
+    if (caminho.length) navegacao.abrirHierarquia(caminho, id, categoria);
+    else navegacao.abrirCidade(id, categoria, window.MapaMundo.capturarVista());
+  }
+
+  function desenharNavegacaoRegional(caminho) {
+    const regioes = window.RegioesMapa;
+    const regiao = regioes.obter(caminho.at(-1));
+    const pai = regioes.obter(caminho.at(-2));
+    $("regiao-titulo").textContent = regiao?.nome ?? "Mapa global";
+    $("voltar-regiao").hidden = !caminho.length;
+    $("voltar-regiao").textContent = `‹ ${pai?.nome ?? "Mapa global"}`;
+    const filhas = regioes.filhas(caminho);
+    const proximo = filhas[0]?.id.split(":")[0];
+    const seletor = $("seletor-regiao");
+    const rotulo = {continente:"Escolher continente", pais:"Escolher país", estado:"Escolher estado ou província"};
+    seletor.setAttribute("aria-label", rotulo[proximo] ?? "Escolher região");
+    seletor.replaceChildren(new Option(rotulo[proximo] ?? "Escolher região", ""));
+    for (const filha of [...filhas].sort((a,b) => a.nome.localeCompare(b.nome,"pt-BR"))) {
+      seletor.add(new Option(filha.nome, filha.id));
+    }
+    seletor.hidden = !filhas.length;
+    $("regiao-orientacao").textContent = filhas.length
+      ? "Escolha uma região no seletor ou explore o mapa."
+      : "Clique em uma cidade no mapa ou pesquise pelo nome.";
+    ajustarZoomRegional(true);
+  }
+
+  function ajustarZoomRegional(livre) {
+    $("grupo-zoom").hidden = !livre;
+    for (const controle of ["scrollWheelZoom", "doubleClickZoom", "touchZoom", "keyboard"]) {
+      mapa[controle]?.[livre ? "enable" : "disable"]();
+    }
   }
 
   // Voltar/Avancar restauram a tela sem escrever outra entrada de historico.
   function mostrarRota(rota) {
     if (!dadosProntos) return;
     if (rota.cidade) {
+      ajustarZoomRegional(true);
+      const regiao = window.RegioesMapa.obter(rota.caminho.at(-1));
+      $("voltar-rotulo").textContent = regiao?.nome ?? (rota.vista ? "Voltar à região" : "Mapa global");
       escolherCategoria(rota.categoria);
       abrirCidade(rota.cidade);
-    } else voltarParaMundo();
+    } else voltarParaMundo(rota.vista, rota.caminho);
     if (rota.metodologia) abrirPainel("metodologia");
   }
 
@@ -298,7 +338,8 @@
     // Card da cidade: botões de categoria
     for (const botao of document.querySelectorAll("#categorias [data-categoria]")) {
       botao.addEventListener("click", () => {
-        escolherCategoria(botao.dataset.categoria);
+        const categoria = botao.dataset.categoria;
+        escolherCategoria(categoria === estado.categoria ? GERAL : categoria);
         window.MapaCidade.trocarCategoria(estado.categoria);
         desenharCartao();
         desenharInfo();
@@ -307,6 +348,13 @@
       });
     }
     $("voltar").addEventListener("click", () => navegacao.voltarGlobal());
+    $("voltar-regiao").addEventListener("click", () => navegacao.voltarGlobal());
+    $("seletor-regiao").addEventListener("change", evento => {
+      const seletor = evento.currentTarget;
+      const destino = window.RegioesMapa.obter(seletor.value);
+      seletor.value = "";
+      if (destino) navegacao.abrirHierarquia(destino.caminho);
+    });
     $("recolher-cartao").addEventListener("click", alternarCartao);
     // Guarda a altura do card numa variável do CSS (--altura-cartao). No celular,
     // o botão (i) e o "centralizar" usam essa medida para ficar logo acima do card,
@@ -332,6 +380,9 @@
 
     // Menu
     $("botao-menu").addEventListener("click", () => alternar($("botao-menu"), $("menu")));
+    $("ranking-cidades").addEventListener("click", evento => {
+      if (evento.target.closest("button[data-cidade]")) alternar($("botao-menu"), $("menu"), false);
+    });
     for (const botao of document.querySelectorAll("[data-modo]")) {
       botao.addEventListener("click", () => {
         for (const outro of document.querySelectorAll("[data-modo]")) outro.setAttribute("aria-pressed", String(outro === botao));
@@ -344,11 +395,15 @@
     $("botao-info").addEventListener("click", () => alternar($("botao-info"), $("info")));
 
     // Controles do mapa
-    $("zoom-mais").addEventListener("click", () => mapa.zoomIn());
-    $("zoom-menos").addEventListener("click", () => mapa.zoomOut());
+    $("zoom-mais").addEventListener("click", () => {
+      if (!$("grupo-zoom").hidden) mapa.zoomIn();
+    });
+    $("zoom-menos").addEventListener("click", () => {
+      if (!$("grupo-zoom").hidden) mapa.zoomOut();
+    });
     $("centralizar").addEventListener("click", () => {
       if (estado.cidade) window.MapaCidade.centralizar(margens());
-      else window.MapaMundo.mostrar(margens);
+      else window.MapaMundo.mostrar(margens, null, navegacao.ler().caminho);
     });
 
     // Cliques nos botões de abertura e fechamento dos painéis.
@@ -404,9 +459,10 @@
   // ===== Início =====
   function criarMapa() {
     mapa = window.L.map("mapa", {
-      zoomControl: false, minZoom: 0, maxZoom: 18, zoomSnap: 0.25,
+      zoomControl: false, boxZoom: false, minZoom: 0, maxZoom: 18, zoomSnap: 0.25,
       worldCopyJump: true, maxBoundsViscosity: 1,
     });
+    ajustarZoomRegional(false);
     mapa.on("resize", () => window.CityMapViewport.resize(mapa));
     window.CityMapViewport.showWorld(mapa);
     window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -428,7 +484,11 @@
       const resumo = await window.CityDataSource.summary();
       if (!resumo.length) throw new Error("Ainda não há cidades com análise concluída. Tente novamente mais tarde.");
       aplicarResumo(resumo);
-      await window.MapaMundo.iniciar({ mapaDaTela: mapa, resumo, aoEscolherCidade: id => navegacao.abrirCidade(id, estado.categoria) });
+      await window.MapaMundo.iniciar({
+        mapaDaTela: mapa, resumo, aoEscolherCidade: navegarParaCidade,
+        aoAbrirRegiao: caminho => navegacao.abrirHierarquia(caminho),
+      });
+      navegacao.iniciar(window.RegioesMapa.caminhoCidade);
       carregando(false);
       dadosProntos = true;
       // Le o endereco atual: o usuario pode ter voltado durante o carregamento.
@@ -442,6 +502,9 @@
 
   window.Icones.preencher(); // troca os <i data-icone="..."> pelos desenhos
   criarMapa();
+  window.MapaMundo.aoMudarRegioes = () => {
+    if (dadosProntos && !estado.cidade) desenharNavegacaoRegional(navegacao.ler().caminho);
+  };
   window.MapaMundo.aoMudarNotas = () => { if (!estado.cidade) desenharLegenda(); };
   window.MapaCidade.iniciar(mapa, { carregando, erro: avisar });
   window.Simulacao.iniciar(mapa, ({concluida = false} = {}) => {
@@ -453,10 +516,9 @@
     }
     if (concluida && celular()) $("sim-resultado-acoes").scrollIntoView({block:"nearest"});
   });
-  window.Busca.iniciar(id => navegacao.abrirCidade(id, estado.categoria));
+  window.Busca.iniciar(navegarParaCidade);
   ligarEventos();
   navegacao = window.NavegacaoMapa.criar({aoNavegar:mostrarRota});
-  navegacao.iniciar();
   $("tentar-de-novo").addEventListener("click", iniciar);
   setInterval(atualizar, ATUALIZAR_A_CADA);
   iniciar();
