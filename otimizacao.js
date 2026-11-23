@@ -138,7 +138,8 @@
     calculando = true;
     resultado = null;
     desenhar();
-    aoEscolherCategoria(categoria);
+    // Se trocar o card falhar (ex.: mapa ainda escondido), a sugestão segue mesmo assim.
+    try { aoEscolherCategoria(categoria); } catch { /* nada a fazer */ }
     mensagem(`Procurando ${k === 1 ? "o melhor ponto" : `os ${k} melhores pontos`} para ${nome(categoria)}. Isso pode levar alguns segundos.`);
     try {
       const dados = await window.CityDataSource.optimize(analise.id, categoria, k);

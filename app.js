@@ -343,7 +343,9 @@
   // Troca a categoria do card e do mapa de calor (botões do card e sugestão de locais).
   function mostrarCategoria(categoria) {
     escolherCategoria(categoria);
-    window.MapaCidade.trocarCategoria(estado.categoria);
+    // Com a página aberta escondida o mapa ainda não tem posição e a troca dá erro;
+    // o card continua sendo atualizado e o mapa se redesenha quando aparecer.
+    try { window.MapaCidade.trocarCategoria(estado.categoria); } catch { /* idem */ }
     desenharCartao();
     desenharInfo();
     desenharLegenda();

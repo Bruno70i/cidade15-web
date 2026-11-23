@@ -191,6 +191,16 @@ test("simular impacto completo envia os pontos para a simulacao", async () => {
   assert.equal(app.elemento("otim-simular").disabled, false);
 });
 
+test("falha ao trocar o card (mapa escondido) nao trava a sugestao", async () => {
+  const app = iniciar(async () => RESPOSTA);
+  // O app.js troca o card por esta funcao; aqui ela falha como o Leaflet com o mapa escondido.
+  app.categoriasDoCard.push = () => { throw new Error("Set map center and zoom first."); };
+  await app.sugerir();
+  assert.equal(app.pedidos.length, 1);
+  assert.equal(app.marcadores.length, 3);
+  assert.equal(app.elemento("otim-sugerir").disabled, false);
+});
+
 test("sem cidade aberta o botao fica desligado", () => {
   const app = iniciar(async () => RESPOSTA);
   app.otimizacao.reset(null);
