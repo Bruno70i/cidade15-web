@@ -194,6 +194,7 @@
     estado.cidade = { id: cidadeId, nome: item.name };
     estado.latest = estado.detalhes.get(cidadeId) ?? null;
     window.Busca.mostrarNome(item.name);
+    window.Otimizacao.reset(null); // tira os pinos sugeridos da cidade anterior
     window.MapaMundo.esconder();
     fecharPaineis();
     desenharCartao();
@@ -206,6 +207,7 @@
         estado.latest = latest;
       }
       window.Simulacao.reset(estado.latest.execution);
+      window.Otimizacao.reset(estado.latest.execution);
       desenharCartao();
       desenharInfo();
       desenharExemplo();
@@ -231,6 +233,7 @@
     estado.cidade = null;
     estado.latest = null;
     window.Simulacao.reset(null);
+    window.Otimizacao.reset(null);
     window.MapaCidade.fechar();
     window.Busca.mostrarNome("");
     carregando(false);
@@ -312,7 +315,10 @@
   // Marca o botão da categoria escolhida (só um fica marcado).
   function escolherCategoria(categoria) {
     estado.categoria = categoria;
-    if (CATEGORIAS[categoria]) window.Simulacao.escolherTipo(categoria);
+    if (CATEGORIAS[categoria]) {
+      window.Simulacao.escolherTipo(categoria);
+      window.Otimizacao.escolherTipo(categoria);
+    }
     for (const botao of document.querySelectorAll("#categorias [data-categoria]")) {
       botao.setAttribute("aria-pressed", String(botao.dataset.categoria === categoria));
     }
@@ -334,17 +340,22 @@
     $("painel-metodologia").hidden = true;
   }
 
+  // Troca a categoria do card e do mapa de calor (botões do card e sugestão de locais).
+  function mostrarCategoria(categoria) {
+    escolherCategoria(categoria);
+    window.MapaCidade.trocarCategoria(estado.categoria);
+    desenharCartao();
+    desenharInfo();
+    desenharLegenda();
+    navegacao.atualizarCategoria(estado.categoria);
+  }
+
   function ligarEventos() {
-    // Card da cidade: botões de categoria
+    // Card da cidade: botões de categoria (clicar de novo na marcada volta ao Geral)
     for (const botao of document.querySelectorAll("#categorias [data-categoria]")) {
       botao.addEventListener("click", () => {
         const categoria = botao.dataset.categoria;
-        escolherCategoria(categoria === estado.categoria ? GERAL : categoria);
-        window.MapaCidade.trocarCategoria(estado.categoria);
-        desenharCartao();
-        desenharInfo();
-        desenharLegenda();
-        navegacao.atualizarCategoria(estado.categoria);
+        mostrarCategoria(categoria === estado.categoria ? GERAL : categoria);
       });
     }
     $("voltar").addEventListener("click", () => navegacao.voltarGlobal());
@@ -515,6 +526,14 @@
       alternar($("botao-info"), $("info"), false);
     }
     if (concluida && celular()) $("sim-resultado-acoes").scrollIntoView({block:"nearest"});
+  });
+  // Sugestão de locais (rota /optimize). Ao pedir, o card e o mapa de calor passam
+  // para a mesma categoria, para os pinos aparecerem sobre o tempo daquele serviço.
+  // No celular o card cobre metade da tela: ele é minimizado antes de mostrar um ponto.
+  window.Otimizacao.iniciar(mapa, {
+    margens,
+    aoEscolherCategoria: (categoria) => { if (estado.cidade && estado.categoria !== categoria) mostrarCategoria(categoria); },
+    antesDeMostrar: () => { if (celular() && !$("cartao").classList.contains("recolhido")) alternarCartao(); },
   });
   window.Busca.iniciar(navegarParaCidade);
   ligarEventos();

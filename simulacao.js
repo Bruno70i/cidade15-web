@@ -134,8 +134,9 @@
     }
 
     // Envia os locais para a API e guarda o resultado.
+    // Devolve true quando o resultado chegou e foi aplicado.
     async function calcular() {
-        if (!execucao || !locais.length || calculando || verificando > 0) return;
+        if (!execucao || !locais.length || calculando || verificando > 0) return false;
         const idEnviado = execucao.id;
         const minha = ++revisao;
         let concluida = false;
@@ -164,6 +165,28 @@
                 aoMudar({concluida});
             }
         }
+        return concluida;
+    }
+
+    // Recebe os pontos da sugestão de locais (otimizacao.js), coloca-os como novos
+    // locais e já calcula o impacto. Os pontos são nós da própria rede da análise,
+    // então não precisam da verificação de posição feita nos cliques do mapa.
+    async function adicionarSugeridos(categoria, pontos) {
+        if (!execucao || calculando || verificando > 0) return { adicionados: 0, concluida: false, ocupado: true };
+        if (adicionando) parar();
+        let adicionados = 0;
+        for (const ponto of pontos) {
+            const nodeId = `sugestao:${ponto.node_id}`;
+            if (locais.length >= LIMITE) break;
+            if (locais.some((local) => local.categoria === categoria && local.nodeId === nodeId)) continue;
+            registrar(categoria, { lat: ponto.latitude, lng: ponto.longitude, nodeId, distancia: 0 });
+            adicionados++;
+        }
+        atualizarBotoes();
+        aoMudar();
+        // Nada novo e o impacto já calculado: não precisa pedir de novo.
+        if (!adicionados && resultado) return { adicionados, concluida: true };
+        return { adicionados, concluida: await calcular() };
     }
 
     function parar() {
@@ -233,6 +256,7 @@
             limpar();
         },
         parar,
+        adicionarSugeridos,
         emAdicao: () => adicionando,
         centralizar(margens) {
             if (locais.length) mapa.fitBounds(window.L.latLngBounds(locais.map(local=>[local.lat, local.lng])), {...margens,maxZoom:16});

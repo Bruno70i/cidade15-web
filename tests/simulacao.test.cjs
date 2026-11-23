@@ -161,3 +161,21 @@ test('dois cliques ajustados ao mesmo no e categoria nao criam locais duplicados
   app.entrar();await app.tocar({lat:-23.96,lng:-46.33});await app.tocar({lat:-23.9601,lng:-46.3301});
   assert.match(app.elemento('sim-mensagem').textContent,/Já existe/);await app.calcular();assert.equal(count,1);
 });
+test('locais sugeridos entram na simulacao com a posicao exata e ja calculam o impacto',async()=>{
+  const enviados=[];const result={execution_id:546};
+  const app=iniciar(async(id,services)=>{enviados.push(services);return result;});
+  const pontos=[{rank:1,node_id:10,latitude:-23.95,longitude:-46.33,marginal_population:100},{rank:2,node_id:11,latitude:-23.96,longitude:-46.34,marginal_population:50}];
+  const resposta=await app.simulacao.adicionarSugeridos('health',pontos);
+  assert.deepEqual({...resposta},{adicionados:2,concluida:true});
+  assert.equal(app.simulacao.resultado(),result);
+  assert.equal(enviados[0].length,2);assert.equal(enviados[0][1].latitude,-23.96);assert.equal(enviados[0][0].category,'health');
+  // Os mesmos pontos de novo nao duplicam nem recalculam.
+  assert.deepEqual({...await app.simulacao.adicionarSugeridos('health',pontos)},{adicionados:0,concluida:true});
+  assert.equal(enviados.length,1);
+});
+test('locais sugeridos aguardam a simulacao em andamento',async()=>{
+  let resolve;const app=iniciar(()=>new Promise(done=>{resolve=done;}));
+  await app.adicionar();const pendente=app.calcular();
+  const resposta=await app.simulacao.adicionarSugeridos('food',[{rank:1,node_id:3,latitude:1,longitude:1,marginal_population:5}]);
+  assert.equal(resposta.ocupado,true);resolve({execution_id:546});await pendente;
+});

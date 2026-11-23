@@ -72,5 +72,17 @@
         body: JSON.stringify({ services: servicos }),
       });
     },
+
+    // Sugestão de locais (rota /optimize, algoritmo guloso do Guilherme): a API
+    // procura na rede de ruas os pontos onde um novo serviço da categoria
+    // alcançaria mais moradores que hoje estão sem acesso. Nada é gravado.
+    // "quantidade" vai de 1 a 3; o tempo limite (15 min) vem da própria análise.
+    optimize(execucaoId, categoria, quantidade) {
+      return pedir(`/api/v1/executions/${encodeURIComponent(execucaoId)}/optimize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: categoria, k: quantidade, algorithm: "greedy" }),
+      });
+    },
   };
 })();

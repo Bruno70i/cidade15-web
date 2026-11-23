@@ -26,6 +26,7 @@
         pontos: '<circle cx="6" cy="7" r="1.6"/><circle cx="13" cy="5" r="1.6"/><circle cx="18" cy="11" r="1.6"/><circle cx="9" cy="13" r="1.6"/><circle cx="15" cy="18" r="1.6"/><circle cx="6" cy="19" r="1.6"/>',
         mais: '<path d="M12 5v14M5 12h14"/>',
         varinha: '<path d="m4 20 11-11"/><path d="M15 4v3M13.5 5.5h3M19 9v3M17.5 10.5h3"/>',
+        alvo: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
         voltar: '<path d="M15 18 9 12l6-6"/>',
         seta: '<path d="m6 9 6 6 6-6"/>',
         info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
