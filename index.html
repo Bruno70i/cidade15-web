@@ -11,18 +11,19 @@
   <link rel="icon" type="image/png" sizes="32x32" href="marca/icone-32.png?v=20261124-marca">
   <link rel="apple-touch-icon" href="marca/icone-180.png?v=20261124-marca">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261102-interface-18">
-  <link rel="stylesheet" href="style.css?v=20261124-melhorias">
+  <link rel="stylesheet" href="style.css?v=20261124-leve">
   <!-- Ordem importa: o Leaflet primeiro, o app.js por último (ele usa todos os outros). -->
   <script src="vendor/leaflet/leaflet.js?v=20261102-interface-18" defer></script>
   <script src="browser-cache.js?v=20261124-melhorias" defer></script>
-  <script src="data-source.js?v=20261124-melhorias" defer></script>
+  <script src="simplificar.js?v=20261124-leve" defer></script>
+  <script src="data-source.js?v=20261124-leve" defer></script>
   <script src="map-data.js?v=20261102-interface-18" defer></script>
   <script src="icones.js?v=20261120-otimizacao" defer></script>
   <script src="cores.js?v=20261102-interface-18" defer></script>
   <script src="calor.js?v=20261102-interface-18" defer></script>
   <script src="map-viewport.js?v=20261102-interface-18" defer></script>
-  <script src="regioes.js?v=20261124-melhorias" defer></script>
-  <script src="mapa-mundo.js?v=20261124-melhorias" defer></script>
+  <script src="regioes.js?v=20261124-leve" defer></script>
+  <script src="mapa-mundo.js?v=20261124-leve" defer></script>
   <script src="mapa-cidade.js?v=20261124-melhorias" defer></script>
   <script src="simulacao-vista.js?v=20261102-interface-18" defer></script>
   <script src="simulacao-locais.js?v=20261102-interface-18" defer></script>
@@ -30,7 +31,7 @@
   <script src="otimizacao.js?v=20261124-melhorias" defer></script>
   <script src="busca.js?v=20261102-interface-18" defer></script>
   <script src="navegacao.js?v=20261103-hierarquia" defer></script>
-  <script src="app.js?v=20261124-melhorias" defer></script>
+  <script src="app.js?v=20261124-leve" defer></script>
 </head>
 
 <body>
@@ -44,11 +45,8 @@
     aria-expanded="false" aria-controls="menu">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
   </button>
-  <!-- Logo "15": volta ao mapa global -->
-  <a id="marca-topo" class="flutuante marca-topo" href="./" title="Cidade de 15 minutos · voltar ao mapa global"
-    aria-label="Cidade de 15 minutos: voltar ao mapa global"><img src="marca/15.png?v=20261124-marca" alt="" width="38" height="28"></a>
   <nav id="menu" class="flutuante menu" aria-label="Menu" hidden>
-    <p class="marca"><img src="marca/15.png?v=20261124-marca" alt="" width="27" height="20">Cidade de <span>15</span> minutos</p>
+    <p class="marca">Cidade de <span>15</span> minutos</p>
     <details class="ranking-global">
       <summary class="item-menu"><i data-icone="trofeu"></i>Ranking global</summary>
       <p class="suave">Cidades analisadas, ordenadas pela parcela da população com acesso aos quatro tipos de serviço.</p>

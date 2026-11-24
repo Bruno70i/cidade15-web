@@ -9,6 +9,7 @@
   // sozinha quando entram cidades novas (o desenho de uma cidade não muda).
   const contornosCache = window.CityCache?.create({ banco: "cidade15-contornos", maxEntries: 2, maxBytes: 80 * 1024 * 1024 });
   const SETE_DIAS = 7 * 24 * 60 * 60 * 1000;
+  const TOLERANCIA_CONTORNOS = 0.006; // graus (~650 m), ver simplificar.js
   const contornosPendentes = new Map();
   // Assinatura curta da lista de cidades (para a chave do cache não ter milhares de IDs).
   function assinatura(texto) {
@@ -56,7 +57,7 @@
     // Um GeoJSON para todas as cidades, inclusive as de outros países.
     boundaries(resumo = []) {
       const ids = resumo.map(item => String(item.city_id)).sort().join(",");
-      const key = `boundaries-v2:${resumo.length}:${assinatura(ids)}`;
+      const key = `boundaries-v3:${resumo.length}:${assinatura(ids)}`;
       if (!contornosPendentes.has(key)) {
         const request = (async () => {
           // Antes os contornos nunca entravam no cache (passavam do limite de 12 MB)
@@ -69,7 +70,13 @@
           let value = null;
           try { value = JSON.parse(texto); } catch { /* tratado abaixo */ }
           if (!contornosValidos(value)) throw new Error("Não foi possível carregar os contornos das cidades.");
-          contornosCache?.set(key, texto, texto.length * 2).catch(() => {}); // grava sem atrasar o mapa
+          // Simplifica uma vez (fica com ~39% dos pontos: o mapa global deixa de travar
+          // no celular) e guarda já simplificado, para as próximas visitas.
+          if (window.Simplificar) value = {...value, features: value.features.map(f => window.Simplificar.feature(f, TOLERANCIA_CONTORNOS))};
+          setTimeout(() => {
+            const guardar = JSON.stringify(value);
+            contornosCache?.set(key, guardar, guardar.length * 2).catch(() => {});
+          }, 2000); // grava depois, sem atrasar o mapa
           return value;
         })();
         contornosPendentes.set(key, request);

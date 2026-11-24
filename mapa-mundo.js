@@ -10,6 +10,13 @@
   const escapar = text => String(text ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
   const pct = value => `${numero.format(value)}%`;
   let mapa, camada, contornos, aoEscolher = () => {};
+  // Duas versões das cidades: "longe" (simplificada, do mundo até o nível de estado, onde a
+  // diferença fica em ~1 pixel) e "perto" (detalhada, só com o mapa bem aproximado).
+  // Só uma fica no mapa; com menos pontos, o zoom no celular não trava.
+  let camadaPerto = null, camadaLonge = null, detalhado = false;
+  const TOLERANCIA_LONGE = 0.012; // graus (~1,3 km): ~1 pixel no nível de estado
+  const ZOOM_DETALHE = 7.5;      // a partir daqui usa a versão detalhada
+  let limiteRanking = 100, rankingAtual = []; // o ranking mostra 100 cidades por vez
   let resumoGeral = [], cidades = new Map(), notas = new Map(), ordenadas = [];
   let pedido = 0, carregandoContornos = null;
   let destaques, regioes = [], globalVisivel = false, margensAtuais = () => ({});
@@ -21,6 +28,8 @@
   let realce, areasContinentes; // contorno da região escolhida; áreas clicáveis dos continentes
   let textoResumo = "";
   const inteiro = new Intl.NumberFormat("pt-BR", {maximumFractionDigits:0});
+  // Cópia com menos pontos (simplificar.js); sem o módulo, usa a forma original.
+  const simplificada = (feature, tolerancia) => window.Simplificar?.feature(feature, tolerancia) ?? feature ?? null;
   const combinacoes = new Map();
   const marcadas = () => [...document.querySelectorAll("#combinacao input:checked")].map(caixa => caixa.value);
   const mensagem = text => { el("estado-status").textContent = text; };
@@ -54,47 +63,58 @@
     // Fora da região escolhida a cidade fica apagada, para a região se destacar.
     const dentro = dentroDaRegiao(feature);
     const preenchimento = cor(valor);
-    // Com o mapa afastado, a borda usa a cor da própria cidade: as cidades pequenas
+    // A borda usa a cor da própria cidade: com o mapa afastado, as cidades pequenas
     // (menores que um pixel) aparecem coloridas em vez de deixar o mapa "lavado".
-    return {className:"municipio-analisado", color:zoomLonge ? preenchimento : "#ffffff", weight:0.7, opacity:dentro ? 1 : 0.3,
+    // Mais perto, o style.css troca a borda para branco (sem repintar cidade por cidade).
+    return {className:"municipio-analisado", color:preenchimento, weight:0.7, opacity:dentro ? 1 : 0.3,
       fillColor:preenchimento, fillOpacity:!dentro ? 0.15 : valor === undefined ? 0.35 : 0.88};
   }
   // Bordas mais finas com o mapa afastado (as classes ficam no style.css).
-  let zoomLonge = false;
   function marcarZoom() {
     const zoom = mapa?.getZoom?.(), recipiente = mapa?.getContainer?.();
     if (!recipiente || !Number.isFinite(zoom)) return;
     recipiente.classList.toggle("zoom-longe", zoom < 5.5);
     recipiente.classList.toggle("zoom-medio", zoom >= 5.5 && zoom < 7.5);
-    if (zoomLonge !== zoom < 5.5) { zoomLonge = zoom < 5.5; camada?.setStyle(estilo); }
+    if (detalhado !== zoom >= ZOOM_DETALHE) {
+      detalhado = zoom >= ZOOM_DETALHE;
+      trocarNivel();
+    }
+  }
+  function trocarNivel() {
+    if (!camadaPerto) return;
+    const desejada = !detalhado && camadaLonge ? camadaLonge : camadaPerto;
+    const visivel = camada && mapa.hasLayer(camada);
+    if (desejada !== camada) {
+      if (visivel) mapa.removeLayer(camada);
+      camada = desejada;
+    }
+    camada.setStyle(estilo);
+    if (visivel && !mapa.hasLayer(camada)) camada.addTo(mapa);
   }
 
-  // Contorno escuro da região escolhida; no mapa global, o contorno de cada continente com cidades.
+  // Contorno da região escolhida; no mapa global, o contorno de cada continente com cidades.
+  // O continente usa uma forma simples e unificada (dados/continentes.geojson), sem fiordes nem ilhotas.
   function desenharRealce() {
     realce?.clearLayers();
-    if (!globalVisivel || !window.L.polyline) return;
+    if (!globalVisivel || !window.L.geoJSON || !window.L.layerGroup) return;
     realce ??= window.L.layerGroup();
     if (!mapa.hasLayer(realce)) realce.addTo(mapa);
     const linha = (cor, peso, opacidade) => ({interactive:false, fill:false, color:cor, weight:peso, opacity:opacidade});
-    const desenharLinhas = (linhas, leve = false) => {
-      if (!linhas.length) return;
-      window.L.polyline(linhas, linha("#ffffff", leve ? 3.5 : 6, 0.85)).addTo(realce);
-      window.L.polyline(linhas, linha(leve ? "#2855a8" : "#0f1b33", leve ? 1.4 : 2.5, 0.95)).addTo(realce);
+    const contornar = (forma, leve = false) => {
+      if (!forma) return;
+      window.L.geoJSON(forma, {interactive:false, style:linha("#ffffff", leve ? 4 : 5, 0.8)}).addTo(realce);
+      window.L.geoJSON(forma, {interactive:false, style:linha(leve ? "#2855a8" : "#0f1b33", leve ? 1.5 : 2.2, 0.95)}).addTo(realce);
     };
     const id = caminhoAtual.at(-1);
     if (!id) {
-      // Mapa global: contorno mais leve em cada continente com cidades analisadas.
-      for (const continente of window.RegioesMapa?.filhas([]) ?? []) desenharLinhas(window.RegioesMapa.contorno(continente.id), true);
+      for (const continente of window.RegioesMapa?.filhas([]) ?? []) contornar(window.RegioesMapa.forma?.(continente.id), true);
     } else if (id.startsWith("continente:")) {
-      desenharLinhas(window.RegioesMapa?.contorno(id) ?? []);
+      contornar(window.RegioesMapa?.forma?.(id));
     } else {
-      const feature = window.RegioesMapa?.obter(id)?.feature;
-      if (!feature) return;
-      window.L.geoJSON(feature, {interactive:false, style:linha("#ffffff", 6, 0.85)}).addTo(realce);
-      window.L.geoJSON(feature, {interactive:false, style:linha("#0f1b33", 2.5, 0.95)}).addTo(realce);
+      contornar(simplificada(window.RegioesMapa?.obter(id)?.feature, 0.01));
     }
   }
-  // Mapa global: a área de cada continente com cidades fica clicável (leve tom azul ao passar o mouse).
+  // Mapa global: a forma de cada continente com cidades fica clicável (leve tom azul ao passar o mouse).
   function desenharContinentes() {
     areasContinentes?.clearLayers();
     if (!globalVisivel || caminhoAtual.length || !window.L.featureGroup) return;
@@ -102,9 +122,11 @@
     if (!continentes.length) return;
     areasContinentes ??= window.L.featureGroup();
     for (const continente of continentes) {
-      window.L.geoJSON({type:"FeatureCollection", features:window.RegioesMapa.paisesDoContinente(continente.id)}, {
+      const forma = window.RegioesMapa.forma?.(continente.id);
+      if (!forma) continue;
+      window.L.geoJSON(forma, {
         style:{className:"continente-area", stroke:false, fill:true, fillColor:"#2f6fe4", fillOpacity:0.04},
-        onEachFeature(feature, forma) { forma.on("click", () => aoEscolherRegiao(continente.caminho)); },
+        onEachFeature(feature, camadaForma) { camadaForma.on("click", () => aoEscolherRegiao(continente.caminho)); },
       }).addTo(areasContinentes);
     }
     if (!mapa.hasLayer(areasContinentes)) areasContinentes.addTo(mapa);
@@ -155,8 +177,9 @@
       const chave = [...paises].sort().join("|");
       if (chave !== paisesExibidos) {
         if (bordasPaises) mapa.removeLayer(bordasPaises);
-        bordasPaises = window.L.geoJSON(dados, {
-          filter: feature => feature.properties.nomes.some(nome => paises.has(nomePais(nome))),
+        // Fronteiras dos países analisados, com menos pontos (bem mais leve no celular).
+        const analisados = dados.features.filter(feature => feature.properties.nomes.some(nome => paises.has(nomePais(nome))));
+        bordasPaises = window.L.geoJSON({type:"FeatureCollection", features:analisados.map(feature => simplificada(feature, 0.02))}, {
           style:{className:"contorno-pais", color:"#2855a8", weight:2, opacity:0.9,
             fill:true, fillColor:"#ffffff", fillOpacity:0},
           onEachFeature(feature, forma) {
@@ -242,11 +265,16 @@
     const cidadesOrdenadas = resumo.filter(item => Number.isFinite(item.selected_coverage_percentage))
       .sort((a,b) => b.selected_coverage_percentage - a.selected_coverage_percentage
         || a.name.localeCompare(b.name, "pt-BR") || String(a.city_id).localeCompare(String(b.city_id)));
-    lista.innerHTML = cidadesOrdenadas.map(item => `
+    const mostradas = cidadesOrdenadas.slice(0, limiteRanking);
+    const restantes = cidadesOrdenadas.length - mostradas.length;
+    lista.innerHTML = mostradas.map(item => `
       <li><button type="button" data-cidade="${escapar(item.city_id)}">
         <span><strong>${escapar(item.name)}</strong><small>${escapar(PAISES[item.country] || item.country)}</small></span>
         <strong>${escapar(pct(item.selected_coverage_percentage))}</strong>
-      </button></li>`).join("");
+      </button></li>`).join("") + (restantes > 0
+      ? `<li class="ranking-mais"><button type="button" data-mais>Mostrar mais ${inteiro.format(Math.min(200, restantes))} cidades (${inteiro.format(restantes)} restantes)</button></li>`
+      : "");
+    rankingAtual = resumo;
   }
   async function trocarCombinacao(evento) {
     const categorias = marcadas();
@@ -274,7 +302,8 @@
       contornos = dados;
       const grupos = new Map();
       const geometrias = [];
-      camada = window.L.geoJSON({...dados,features:dados.features.filter(feature=>cidades.has(idDe(feature)))},{style:estilo,onEachFeature(feature,forma) {
+      const analisadas = dados.features.filter(feature=>cidades.has(idDe(feature)));
+      camadaPerto = window.L.geoJSON({...dados,features:analisadas},{style:estilo,smoothFactor:1.5,onEachFeature(feature,forma) {
         preparar(feature,forma);
         const bounds = forma.getBounds?.();
         if (!bounds?.isValid()) return;
@@ -286,6 +315,11 @@
         grupo.bounds.extend(bounds);
       }});
       regioes = [...grupos.values()];
+      camadaLonge = window.Simplificar && window.L.geoJSON
+        ? window.L.geoJSON({...dados,features:analisadas.map(feature => simplificada(feature, TOLERANCIA_LONGE))},
+          {style:estilo,smoothFactor:1.5,onEachFeature:preparar})
+        : null;
+      camada = !detalhado && camadaLonge ? camadaLonge : camadaPerto;
       if (visivel) camada.addTo(mapa);
       await window.RegioesMapa?.atualizar(geometrias, resumoGeral).catch(erro => console.warn(erro.message));
       if (caminhoAtual.length) camada.setStyle(estilo); // agora cada cidade sabe sua região
@@ -312,6 +346,7 @@
       // Países e estados começam a baixar junto com os contornos (antes esperavam por eles).
       window.RegioesMapa?.preparar?.()?.catch?.(() => {});
       el("ranking-cidades")?.addEventListener?.("click", evento => {
+        if (evento.target.closest("button[data-mais]")) { limiteRanking += 200; atualizarRanking(rankingAtual); return; }
         const botao = evento.target.closest("button[data-cidade]");
         if (botao && cidades.has(botao.dataset.cidade)) aoEscolher(botao.dataset.cidade, "overall");
       });

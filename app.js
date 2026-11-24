@@ -408,11 +408,6 @@
         desenharLegenda();
       });
     }
-    // Logo "15": volta ao mapa global.
-    $("marca-topo").addEventListener("click", evento => {
-      evento.preventDefault();
-      if (dadosProntos) navegacao.voltarGlobal();
-    });
     $("sim-ir-locais").addEventListener("click", () => {
       if (celular() && !$("cartao").classList.contains("recolhido")) alternarCartao();
       window.Simulacao.centralizar(margens());
