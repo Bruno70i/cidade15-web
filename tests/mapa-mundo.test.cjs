@@ -1,128 +1,201 @@
-const test=require('node:test');
-const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const path=require('node:path');
-const vm=require('node:vm');
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
 
-test('a visao geral enquadra o mundo e usa IDs para cidades de paises diferentes',async()=>{
-  let worldViews=0,boundaryCalls=0; const clicked=[], shapes=[];
-  const checks=['health','education','food','culture'].map(value=>({value,addEventListener(){}}));
-  const summary=[{city_id:1,name:'Santa Maria',country:'Brazil',selected_coverage_percentage:10},{city_id:2,name:'Santa Maria',country:'France',selected_coverage_percentage:90}];
-  const contours={type:'FeatureCollection',features:[...summary,{city_id:99,name:'Sem analise',country:'Brazil'}].map(c=>({type:'Feature',properties:{city_id:c.city_id,name:c.name,country:c.country},geometry:{type:'Polygon',coordinates:[]}}))};
-  const map={getSize:()=>({x:800,y:600}),invalidateSize(){},on(){},getZoom:()=>8,hasLayer:()=>false,fitWorld(){throw new Error('fitWorld encolhe o mapa e deixa faixas vazias');},fitBounds(){},removeLayer(){}};
-  const context={window:{CityMapViewport:{showWorld(){worldViews++;}},CityDataSource:{boundaries:async()=>{boundaryCalls++;return contours;}},Cores:{css:value=>String(value),degrade:()=>''},L:{geoJSON:(geo,options)=>{
-    for(const feature of geo.features){const handlers={};const shape={bindTooltip(){},on:(name,fn)=>{handlers[name]=fn;},setStyle(){}};options.onEachFeature?.(feature,shape);shapes.push({feature,handlers,color:options.style(feature).fillColor});}
-    return {setStyle(){},resetStyle(){},addTo(){}};
-  }}},document:{querySelectorAll:()=>checks,getElementById:()=>({textContent:''})},Intl,Map,Set,Number};
-  const file=fs.existsSync(path.join(__dirname,'../mapa-mundo.js'))?'../mapa-mundo.js':'../mapa-estado.js';
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,file),'utf8'),context);
-  const world=context.window.MapaMundo||context.window.MapaEstado;
-  await world.iniciar({mapaDaTela:map,resumo:summary,aoEscolherCidade:id=>clicked.push(id)});
-  world.mostrar({});
-  assert.equal(boundaryCalls,1);assert.equal(worldViews,1);assert.equal(shapes.length,2,'somente cidades processadas');
-  assert.notEqual(shapes[0].color,shapes[1].color);
-  shapes[0].handlers.click();shapes[1].handlers.click();
-  assert.deepEqual(clicked,['1','2']);
-});
+// Executa regioes.js e mapa-mundo.js de verdade; o Leaflet, o DOM e a API são substituídos.
+// Brasil com SP e MG (com cidades), Acre, DF e um RJ em forma de U (sem cidades) e França com 1 região.
+const quadrado = (oeste, sul, leste, norte) => ({type:"Polygon", coordinates:[[[oeste,sul],[leste,sul],[leste,norte],[oeste,norte],[oeste,sul]]]});
+const PAISES = {type:"FeatureCollection", features:[
+  {type:"Feature", properties:{codigo:"BRA", nomes:["Brazil","BRA","Brasil"]}, geometry:quadrado(-74, -34, -34, 5)},
+  {type:"Feature", properties:{codigo:"FRA", nomes:["France","FRA"]}, geometry:quadrado(-5, 42, 8, 51)},
+]};
+const ESTADOS = {type:"FeatureCollection", features:[
+  {type:"Feature", properties:{pais:"BRA", id:"BRA-1311", nome:"São Paulo"}, geometry:quadrado(-53, -25, -44, -20)},
+  {type:"Feature", properties:{pais:"BRA", id:"BRA-601", nome:"Minas Gerais"}, geometry:quadrado(-51, -20, -40, -14)},
+  {type:"Feature", properties:{pais:"BRA", id:"BRA-576", nome:"Acre"}, geometry:quadrado(-74, -11, -66, -7)},
+  {type:"Feature", properties:{pais:"BRA", id:"BRA-599", nome:"Federal"}, geometry:quadrado(-48.3, -16.1, -47.3, -15.4)},
+  // U aberto para o norte: o centro geométrico (-43, -21,75) cai no vão, fora da forma.
+  {type:"Feature", properties:{pais:"BRA", id:"BRA-RJ", nome:"Rio de Janeiro"}, geometry:{type:"Polygon", coordinates:[[
+    [-45,-23],[-41,-23],[-41,-20],[-42,-20],[-42,-22],[-44,-22],[-44,-20],[-45,-20],[-45,-23]]]}},
+  {type:"Feature", properties:{pais:"FRA", id:"FRA-1", nome:"Île-de-France"}, geometry:quadrado(1, 48, 3.5, 49.5)},
+]};
+const RESUMO = [
+  {city_id:1, name:"Santos", country:"Brazil", execution_id:11, total_population:100, selected_population:50, selected_coverage_percentage:50},
+  {city_id:2, name:"Campinas", country:"Brazil", execution_id:12, total_population:300, selected_population:30, selected_coverage_percentage:10},
+  {city_id:3, name:"Belo Horizonte", country:"Brazil", execution_id:13, total_population:200, selected_population:20, selected_coverage_percentage:10},
+  {city_id:4, name:"Paris", country:"France", execution_id:14, total_population:100, selected_population:80, selected_coverage_percentage:80},
+];
+const cidade = (id, nome, pais, geometria) => ({type:"Feature", properties:{city_id:id, name:nome, country:pais}, geometry:geometria});
+const CONTORNOS = {type:"FeatureCollection", features:[
+  cidade(1, "Santos", "Brazil", quadrado(-46.5, -24.1, -46.2, -23.8)),
+  cidade(2, "Campinas", "Brazil", quadrado(-47.2, -23.0, -46.9, -22.7)),
+  cidade(3, "Belo Horizonte", "Brazil", quadrado(-44.1, -20.0, -43.8, -19.7)),
+  cidade(4, "Paris", "France", quadrado(2.2, 48.8, 2.5, 48.95)),
+]};
 
-async function destaquesGlobais() {
-  let boundaryCalls=0,scale=2,west=-180,east=180;
-  const rotas=[];
-  const markers=[],handlers={},layers=new Set(),enquadramentos=[];
-  const summary=[{city_id:1,name:'Santos',country:'Brazil',selected_coverage_percentage:10},
-    {city_id:2,name:'Guaruja',country:'Brazil',selected_coverage_percentage:20},
-    {city_id:3,name:'Paris',country:'France',selected_coverage_percentage:90}];
-  const features=[...summary,{city_id:99,name:'Sem analise',country:'Spain'}].map((item,i)=>({type:'Feature',properties:{city_id:item.city_id,name:item.name,country:item.country},
-    geometry:{type:'Polygon',coordinates:[]},box:i<2?[[-24,-48],[-23,-46]]:i===2?[[48.8,2.2],[48.9,2.4]]:[[40,-4],[41,-3]]}));
-  function bounds(points) {
-    const b={south:points[0][0],west:points[0][1],north:points[1][0],east:points[1][1],isValid:()=>true,
-      getSouthWest(){return {lat:this.south,lng:this.west};},getNorthEast(){return {lat:this.north,lng:this.east};},
-      getCenter(){return {lat:(this.south+this.north)/2,lng:(this.west+this.east)/2};},
-      extend(other){this.south=Math.min(this.south,other.south);this.north=Math.max(this.north,other.north);this.west=Math.min(this.west,other.west);this.east=Math.max(this.east,other.east);return this;}};
-    return b;
-  }
-  const map={getSize:()=>({x:720,y:600}),invalidateSize(){},getZoom:()=>2,
-    getBounds:()=>({getWest:()=>west,getEast:()=>east}),
-    latLngToContainerPoint:position=>{const lat=position.lat??position[0],lng=position.lng??position[1];return {x:(lng-west)*scale,y:(90-lat)*Math.min(scale,2)};},
-    on:(events,fn)=>{for(const event of events.split(' '))handlers[event]=fn;},hasLayer:layer=>layers.has(layer),
-    removeLayer(layer){layers.delete(layer);},fitBounds(b,options){enquadramentos.push({bounds:b,options});}};
-  const context={window:{CityMapViewport:{showWorld(){}},CityDataSource:{boundaries:async()=>{boundaryCalls++;return {features};}},
-    Cores:{css:()=>'',degrade:()=>''},L:{latLngBounds:points=>bounds(points.map(p=>[p.lat??p[0],p.lng??p[1]])),
-      layerGroup:()=>({clearLayers(){markers.length=0;},addTo(){layers.add(this);return this;}}),divIcon:options=>options,
-      marker:(position,options)=>{const marker={position,options,bindTooltip(){return this;},on(event,fn){this[event]=fn;return this;},addTo(){markers.push(this);return this;}};return marker;},
-      geoJSON:(geo,options)=>{for(const feature of geo.features)options.onEachFeature(feature,{bindTooltip(){},on(){},getBounds:()=>bounds(feature.box)});
-        return {setStyle(){},addTo(){layers.add(this);return this;}};},
-    }},document:{querySelectorAll:()=>['health','education','food','culture'].map(value=>({value,addEventListener(){}})),getElementById:()=>({textContent:''})},Intl,Map,Set,Number,Math};
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../mapa-mundo.js'),'utf8'),context);
-  const world=context.window.MapaMundo;
-  await world.iniciar({mapaDaTela:map,resumo:summary,aoAbrirRegiao:rota=>rotas.push(rota),aoEscolherCidade:()=>{throw new Error('destaque deve aproximar, sem escolher uma cidade arbitraria');}});
-  return {world,markers,handlers,enquadramentos,context,rotas,get calls(){return boundaryCalls;},view(s,w=-180,e=180){scale=s;west=w;east=e;handlers.moveend?.();handlers.zoomend?.();}};
+function limites(pontos) {
+  const b = {s:Infinity, w:Infinity, n:-Infinity, e:-Infinity};
+  const caixa = {
+    extend(outro) {
+      if (outro?.getSouthWest) { this.extend([outro.s, outro.w]); this.extend([outro.n, outro.e]); return this; }
+      const lat = outro.lat ?? outro[0], lng = outro.lng ?? outro[1];
+      b.s = Math.min(b.s, lat); b.n = Math.max(b.n, lat); b.w = Math.min(b.w, lng); b.e = Math.max(b.e, lng);
+      return this;
+    },
+    get s() { return b.s; }, get w() { return b.w; }, get n() { return b.n; }, get e() { return b.e; },
+    isValid: () => Number.isFinite(b.s),
+    getSouthWest: () => ({lat:b.s, lng:b.w}), getNorthEast: () => ({lat:b.n, lng:b.e}),
+    getNorthWest: () => ({lat:b.n, lng:b.w}), getSouthEast: () => ({lat:b.s, lng:b.e}),
+    getCenter: () => ({lat:(b.s + b.n) / 2, lng:(b.w + b.e) / 2}),
+    contains: ([lat, lng]) => lat >= b.s && lat <= b.n && lng >= b.w && lng <= b.e,
+    pad() { return this; },
+  };
+  for (const p of pontos) caixa.extend(p);
+  return caixa;
+}
+function coordenadas(geometria) {
+  return (geometria.type === "Polygon" ? [geometria.coordinates] : geometria.coordinates).flat(2);
 }
 
-test('zoom distante indica cada regiao analisada uma vez e clicar aproxima os contornos',async()=>{
-  const t=await destaquesGlobais();t.world.mostrar({});
-  assert.equal(t.markers.length,2,'duas regioes, sem um marcador por cidade ou em pais sem analise');
-  assert.deepEqual(Array.from(t.markers[0].position),[-23.5,-47]);
-  assert.ok(Math.abs(t.markers[1].position[0]-48.85)<1e-10);
-  assert.equal(t.markers[1].position[1],2.3);
-  t.markers[0].click();
-  assert.equal(t.enquadramentos.length,1);
-  assert.equal(t.enquadramentos[0].bounds.west,-48);
-  assert.equal(t.enquadramentos[0].bounds.east,-46);
-});
-
-test('destaques somem quando a regiao fica legivel e reaparecem ao afastar sem novas consultas',async()=>{
-  const t=await destaquesGlobais();t.world.mostrar({});
-  t.view(80);assert.equal(t.markers.length,1,'estado ja legivel; Paris ainda precisa de destaque');
-  t.view(1200);assert.equal(t.markers.length,0,'nenhum destaque cobre contornos proximos');
-  t.view(2);assert.equal(t.markers.length,2);
-  for(let i=0;i<20;i++)t.handlers.moveend?.();
-  assert.equal(t.calls,1);
-  t.world.esconder();t.handlers.moveend?.();assert.equal(t.markers.length,0,'nenhum destaque no modo cidade');
-});
-
-test('copias horizontais do mundo mantem indicacao e aproximam a copia clicada',async()=>{
-  const t=await destaquesGlobais();t.world.mostrar({});t.view(2,180,540);
-  assert.equal(t.markers.length,2);
-  assert.equal(t.markers[0].position[1],313);
-  t.markers[0].click();assert.equal(t.enquadramentos[0].bounds.west,312);
-});
-
-test('aproximar usa as margens atuais apos mudar a largura ou recolher o painel',async()=>{
-  const t=await destaquesGlobais();let esquerda=460;
-  t.world.mostrar(()=>({paddingTopLeft:[esquerda,90]}));
-  t.markers[0].click();assert.equal(t.enquadramentos[0].options.paddingTopLeft?.[0],460);
-  esquerda=16;
-  t.markers[0].click();assert.equal(t.enquadramentos[1].options.paddingTopLeft?.[0],16);
-});
-
-test('paises ficam selecionaveis sem sobrepor cartoes ao mapa',async()=>{
-  const t=await destaquesGlobais();
-  t.context.window.RegioesMapa={obter:()=>null,filhas:()=>[{id:"pais:FRA"},{id:"pais:BEL"}]};
-  t.world.mostrar({});
-  assert.equal(t.markers.length,0);
-});
-
-test('tocar na China a partir da Europa abre o caminho Asia > China',async()=>{
-  const t=await destaquesGlobais();
-  const europa={id:'continente:Europe',bounds:{},caminho:['continente:Europe']};
-  const china={id:'pais:CHN',caminho:['continente:Asia','pais:CHN']};
-  const feature={properties:{codigo:'CHN',nomes:['China']}};
-  t.context.window.CityMapViewport.resize=()=>{};
-  t.context.window.RegioesMapa={
-    obter:id=>id===europa.id?europa:id===china.id?china:null,
-    filhas:()=>[],
-    carregarPaises:async()=>({features:[feature]}),
+async function cena({contornosDepois = false} = {}) {
+  const mapa = {camadas:new Set(), enquadramentos:[], voos:0, eventos:{},
+    on(nome, fn) { this.eventos[nome] = fn; }, once() {}, hasLayer(c) { return this.camadas.has(c); },
+    invalidateSize() {}, getSize: () => ({x:800, y:600}),
+    fitBounds(b) { this.enquadramentos.push(b); }, flyToBounds(b) { this.enquadramentos.push(b); this.voos++; },
+    latLngToContainerPoint: p => ({x:(p.lng ?? p[1]) * 10, y:-(p.lat ?? p[0]) * 10}),
+    getZoom: () => 4, getMinZoom: () => 1, getCenter: () => ({lat:0, lng:0})};
+  const L = {
+    latLngBounds: pontos => limites(pontos),
+    layerGroup: () => ({itens:[], clearLayers() { this.itens.length = 0; }, addTo(m) { m.camadas.add(this); return this; }}),
+    divIcon: opcoes => opcoes,
+    marker: (posicao, opcoes) => ({posicao, opcoes, eventos:{}, on(nome, fn) { this.eventos[nome] = fn; return this; }, addTo(g) { g.itens.push(this); return this; }}),
+    geoJSON(dados, opcoes = {}) {
+      const features = dados.type === "FeatureCollection" ? dados.features : [dados];
+      const camada = {features, formas:[], addTo(g) { g.itens.push(this); return this; },
+        getBounds: () => limites(features.flatMap(f => coordenadas(f.geometry).map(([lng, lat]) => [lat, lng])))};
+      for (const feature of features) {
+        const forma = {feature, eventos:{}, estilo:typeof opcoes.style === "function" ? opcoes.style(feature) : opcoes.style,
+          on(nome, fn) { this.eventos[nome] = fn; return this; }, bindTooltip() { return this; },
+          setStyle(s) { this.estiloAtual = s; }, bringToFront() {}, closeTooltip() {}};
+        opcoes.onEachFeature?.(feature, forma);
+        camada.formas.push(forma);
+      }
+      return camada;
+    },
   };
-  let tocar;
-  t.context.window.L.geoJSON=(geo,options)=>{
-    const classes={toggle(){}};
-    const forma={feature,on:(_,fn)=>{tocar=fn;},getElement:()=>({classList:classes,setAttribute(){}})};
-    options.onEachFeature(feature,forma);
-    return {addTo(){},bringToBack(){},eachLayer(fn){fn(forma);}};
+  let liberarContornos;
+  const contornosProntos = new Promise(ok => { liberarContornos = ok; });
+  const rotas = [], cidadesAbertas = [];
+  const elementos = new Map();
+  const contexto = {
+    window: {L, Cores:{css:v => `cor${v}`, degrade:() => ""}, CityMapViewport:{resize() {}, showWorld() {}},
+      CityDataSource:{boundaries: async () => { if (contornosDepois) await contornosProntos; return CONTORNOS; }}},
+    document: {
+      querySelectorAll: () => ["health", "education", "food", "culture"].map(value => ({value, addEventListener() {}})),
+      getElementById: id => { if (!elementos.has(id)) elementos.set(id, {textContent:""}); return elementos.get(id); },
+    },
+    fetch: async url => ({ok:true, json: async () => (String(url).includes("paises") ? PAISES : ESTADOS)}),
+    console, Intl, Map, Set, Number, Math, String, Array, Object, Promise, Boolean, JSON,
   };
-  t.world.mostrar({},null,europa.caminho);
-  await new Promise(resolve=>setImmediate(resolve));
-  tocar();
-  assert.deepEqual(t.rotas,[china.caminho]);
+  contexto.window.window = contexto.window;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../regioes.js"), "utf8"), contexto);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../mapa-mundo.js"), "utf8"), contexto);
+  const mundo = contexto.window.MapaMundo;
+  const iniciando = mundo.iniciar({mapaDaTela:mapa, resumo:RESUMO, aoAbrirRegiao:c => rotas.push(c), aoEscolherCidade:id => cidadesAbertas.push(id)});
+  if (!contornosDepois) await iniciando;
+  const grupos = () => [...mapa.camadas];
+  // Todas as formas desenhadas agora (países, estados ou cidades).
+  const formas = () => grupos().flatMap(g => g.itens).filter(c => c.formas).flatMap(c => c.formas);
+  const marcadores = () => grupos().flatMap(g => g.itens).filter(c => c.opcoes?.icon);
+  const rotulos = () => marcadores().map(c => c.opcoes.icon.html);
+  const rotulo = texto => marcadores().find(c => c.opcoes.icon.html.includes(`>${texto}<`));
+  return {mundo, mapa, rotas, cidadesAbertas, formas, rotulos, rotulo, regioes:contexto.window.RegioesMapa, liberarContornos, iniciando};
+}
+const nomeDa = forma => forma.feature.properties.nomes?.[0] ?? forma.feature.properties.nome ?? forma.feature.properties.name;
+
+test("mundo mostra só os países com cidades, sem cidades soltas, e clicar abre o país", async () => {
+  const c = await cena();
+  c.mundo.mostrar({}, null, []);
+  const desenhadas = c.formas();
+  assert.deepEqual(desenhadas.map(nomeDa).sort(), ["Brazil", "France"]);
+  desenhadas.find(f => nomeDa(f) === "Brazil").eventos.click();
+  assert.equal(JSON.stringify(c.rotas.at(-1)), JSON.stringify(["pais:BRA"]));
+});
+
+test("país mostra todos os estados pintados pela média das cidades; sem cidades fica cinza e sem clique", async () => {
+  const c = await cena();
+  c.mundo.mostrar({}, null, ["pais:BRA"]);
+  const estados = c.formas();
+  assert.deepEqual(estados.map(nomeDa).sort(), ["Acre", "Federal", "Minas Gerais", "Rio de Janeiro", "São Paulo"]);
+  // São Paulo: (50 + 30) / (100 + 300) = 20% da população com acesso
+  const sp = c.mundo.estatistica("estado:BRA-1311");
+  assert.equal(sp.cidades, 2);
+  assert.equal(sp.percentual, 20);
+  const acre = estados.find(f => nomeDa(f) === "Acre");
+  assert.equal(acre.estilo.fillColor, "#cfd5de");
+  assert.equal(acre.eventos.click, undefined, "estado sem cidades não abre");
+  estados.find(f => nomeDa(f) === "São Paulo").eventos.click();
+  assert.equal(JSON.stringify(c.rotas.at(-1)), JSON.stringify(["pais:BRA", "estado:BRA-1311"]));
+  assert.ok(c.rotulos().some(html => html.includes(">SP<")), "sigla do estado no mapa");
+  assert.equal(c.regioes.estadosDoPais("pais:BRA").find(e => e.id === "estado:BRA-599").nome, "Distrito Federal");
+});
+
+test("estado mostra só as cidades dele (as outras não aparecem) e os vizinhos apagados e clicáveis", async () => {
+  const c = await cena();
+  c.mundo.mostrar({}, null, ["pais:BRA", "estado:BRA-1311"]);
+  const cidades = c.formas().filter(f => f.feature.properties.city_id);
+  assert.deepEqual(cidades.map(nomeDa).sort(), ["Campinas", "Santos"]);
+  cidades.find(f => nomeDa(f) === "Santos").eventos.click();
+  assert.deepEqual(c.cidadesAbertas, ["1"]);
+  const minas = c.formas().find(f => nomeDa(f) === "Minas Gerais");
+  assert.equal(minas.estilo.fillOpacity, 0.25);
+  minas.eventos.click();
+  assert.equal(JSON.stringify(c.rotas.at(-1)), JSON.stringify(["pais:BRA", "estado:BRA-601"]));
+});
+
+test("a troca de nível é um voo suave e links antigos com continente continuam abrindo o país", async () => {
+  const c = await cena();
+  c.mundo.mostrar({}, null, []);
+  assert.equal(c.mapa.voos, 0, "a primeira vista não voa");
+  c.mundo.mostrar({}, null, ["continente:South America", "pais:BRA"]);
+  assert.equal(c.mapa.voos, 1);
+  assert.ok(c.formas().some(f => nomeDa(f) === "São Paulo"));
+});
+
+test("antes de os contornos chegarem o país já aparece; os estados ganham cor quando eles chegam", async () => {
+  const c = await cena({contornosDepois:true});
+  await new Promise(ok => setImmediate(ok));
+  c.mundo.mostrar({}, null, ["pais:BRA"]);
+  const antes = c.formas().find(f => nomeDa(f) === "São Paulo");
+  assert.equal(antes.estilo.fillColor, "#cfd5de", "sem contornos ainda não se sabe o estado de cada cidade");
+  c.liberarContornos();
+  await c.iniciando;
+  const depois = c.formas().find(f => nomeDa(f) === "São Paulo");
+  assert.notEqual(depois.estilo.fillColor, "#cfd5de");
+});
+
+test("tocar no nome do estado também abre o estado; nome de estado sem cidades não abre", async () => {
+  const c = await cena();
+  c.mundo.mostrar({}, null, ["pais:BRA"]);
+  const sp = c.rotulo("SP");
+  assert.equal(sp.opcoes.interactive, true);
+  sp.eventos.click();
+  assert.equal(JSON.stringify(c.rotas.at(-1)), JSON.stringify(["pais:BRA", "estado:BRA-1311"]));
+  const acre = c.rotulo("AC");
+  assert.equal(acre.opcoes.interactive, false);
+  assert.equal(acre.eventos.click, undefined);
+  // No mapa-múndi, o nome do país também abre o país.
+  c.mundo.mostrar({}, null, []);
+  c.rotulo("Brasil").eventos.click();
+  assert.equal(JSON.stringify(c.rotas.at(-1)), JSON.stringify(["pais:BRA"]));
+});
+
+test("o nome fica dentro do estado mesmo quando o centro geométrico cai fora (estado curvo)", async () => {
+  const c = await cena();
+  c.mundo.mostrar({}, null, ["pais:BRA"]);
+  const [lat, lng] = c.rotulo("RJ").posicao;
+  const dentroDoU = lng > -45 && lng < -41 && lat > -23 && lat < -20 && !(lng > -44 && lng < -42 && lat > -22);
+  assert.ok(dentroDoU, `rótulo do RJ em ${lat}, ${lng} caiu fora da forma`);
 });

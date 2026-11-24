@@ -66,6 +66,20 @@ body.adicionando #mapa { cursor: crosshair; }
 .rotulo-regiao small { font-size: .72rem; color: var(--texto-suave); }
 .rotulo-regiao:hover > span, .rotulo-regiao:focus-visible > span { background: #f0f5ff; }
 .rotulo-regiao:focus-visible { outline: none; }
+/* Nomes e siglas no mapa global (não pegam o clique: ele vai para o estado/país embaixo) */
+.rotulo-mapa { width: auto !important; height: auto !important; background: none; border: 0; pointer-events: none; }
+/* Só o texto recebe o toque (a caixa do marcador fica deslocada do texto). */
+.leaflet-marker-icon.rotulo-mapa.leaflet-interactive { pointer-events: none; cursor: default; }
+.rotulo-mapa.clicavel > span { pointer-events: auto; cursor: pointer; }
+.rotulo-mapa > span {
+  display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; color: #0f1b33; font-weight: 800;
+  font-size: .75rem; letter-spacing: .03em; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 2px #fff, 0 0 1px #fff;
+}
+.rotulo-mapa.nome-estado > span { font-size: .75rem; font-weight: 700; }
+.rotulo-mapa.nome-pais > span {
+  font-size: .8125rem; padding: 4px 10px; border-radius: 99px; background: rgba(255, 255, 255, .92);
+  box-shadow: 0 2px 8px rgba(15, 27, 51, .2); text-shadow: none;
+}
 /* Dica ao passar o mouse numa região ou cidade do mapa global */
 .leaflet-tooltip.dica-regiao { display: grid; gap: 2px; width: max-content; max-width: 230px; padding: 8px 12px; border-radius: 10px; font-size: .8125rem; line-height: 1.35; white-space: normal; }
 .dica-regiao strong { font-size: .9375rem; }

@@ -238,6 +238,7 @@
   }
 
   function voltarParaMundo(vista, caminho) {
+    caminho = semContinente(caminho);
     pedidoCidade++;
     fecharPaineis();
     alternar($("botao-menu"), $("menu"), false);
@@ -279,12 +280,12 @@
     $("regiao-resumo").hidden = !soma;
     if (soma) {
       $("regiao-resumo").innerHTML = `<b>${inteiro.format(soma.cidades)}</b> ${soma.cidades === 1 ? "cidade analisada" : "cidades analisadas"}`
-        + (Number.isFinite(soma.percentual) ? ` · <b>${pct(soma.percentual)}</b> da população chega aos 4 tipos de serviço em até 15 min a pé` : "");
+        + (Number.isFinite(soma.percentual) ? ` · <b>${pct(soma.percentual)}</b> da população com acesso ${soma.texto ?? "aos 4 tipos de serviço"} em até 15 min a pé` : "");
     }
     const filhas = regioes.filhas(caminho);
     const proximo = filhas[0]?.id.split(":")[0];
     const seletor = $("seletor-regiao");
-    const rotulo = {continente:"Escolher continente", pais:"Escolher país", estado:"Escolher estado ou província"};
+    const rotulo = {pais:"Escolher país", estado:"Escolher estado ou província"};
     seletor.setAttribute("aria-label", rotulo[proximo] ?? "Escolher região");
     seletor.replaceChildren(new Option(rotulo[proximo] ?? "Escolher região", ""));
     for (const filha of [...filhas].sort((a,b) => a.nome.localeCompare(b.nome,"pt-BR"))) {
@@ -294,9 +295,8 @@
     // Orientação do nível: o que clicar (ou tocar, no celular) e o que acontece.
     const acao = window.matchMedia("(hover: none)").matches ? "Toque" : "Clique";
     const orientacao = {
-      continente: `${acao} em um continente no mapa ou escolha na lista. Também dá para pesquisar uma cidade pelo nome.`,
-      pais: `${acao} em um país no mapa ou escolha na lista.`,
-      estado: `${acao} em um estado no mapa ou escolha na lista.`,
+      pais: `${acao} em um país pintado no mapa ou escolha na lista. Também dá para pesquisar uma cidade pelo nome.`,
+      estado: `${acao} em um estado no mapa ou escolha na lista. A cor de cada estado é a média das cidades dele.`,
     };
     $("regiao-orientacao").textContent = orientacao[proximo] ?? `${acao} em uma cidade no mapa para ver o acesso dela, ou pesquise pelo nome.`;
     ajustarZoomRegional(true);
@@ -310,7 +310,10 @@
   }
 
   // Voltar/Avancar restauram a tela sem escrever outra entrada de historico.
+  // O nível de continente saiu do mapa; links antigos com ele continuam abrindo.
+  const semContinente = caminho => (caminho ?? []).filter(id => !String(id).startsWith("continente:"));
   function mostrarRota(rota) {
+    rota = {...rota, caminho: semContinente(rota.caminho)};
     if (!dadosProntos) return;
     if (rota.cidade) {
       ajustarZoomRegional(true);

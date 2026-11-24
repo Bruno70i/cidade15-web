@@ -11,6 +11,10 @@
   const SETE_DIAS = 7 * 24 * 60 * 60 * 1000;
   const TOLERANCIA_CONTORNOS = 0.006; // graus (~650 m), ver simplificar.js
   const contornosPendentes = new Map();
+  // Trabalhos longos em fatias curtas: entre uma e outra a tela atende os toques.
+  const agora = () => (globalThis.performance ?? Date).now();
+  // scheduler.yield (Chrome) devolve a vez só ao que é urgente (toques) e volta logo.
+  const pausa = () => globalThis.scheduler?.yield ? globalThis.scheduler.yield() : new Promise(continuar => setTimeout(continuar, 0));
   // Assinatura curta da lista de cidades (para a chave do cache não ter milhares de IDs).
   function assinatura(texto) {
     let hash = 2166136261;
@@ -72,7 +76,15 @@
           if (!contornosValidos(value)) throw new Error("Não foi possível carregar os contornos das cidades.");
           // Simplifica uma vez (fica com ~39% dos pontos: o mapa global deixa de travar
           // no celular) e guarda já simplificado, para as próximas visitas.
-          if (window.Simplificar) value = {...value, features: value.features.map(f => window.Simplificar.feature(f, TOLERANCIA_CONTORNOS))};
+          if (window.Simplificar) {
+            const simples = [];
+            let inicioFatia = agora();
+            for (const feature of value.features) {
+              if (agora() - inicioFatia > 40) { await pausa(); inicioFatia = agora(); }
+              simples.push(window.Simplificar.feature(feature, TOLERANCIA_CONTORNOS));
+            }
+            value = {...value, features: simples};
+          }
           setTimeout(() => {
             const guardar = JSON.stringify(value);
             contornosCache?.set(key, guardar, guardar.length * 2).catch(() => {});
