@@ -66,7 +66,17 @@ body.adicionando #mapa { cursor: crosshair; }
 .rotulo-regiao small { font-size: .72rem; color: var(--texto-suave); }
 .rotulo-regiao:hover > span, .rotulo-regiao:focus-visible > span { background: #f0f5ff; }
 .rotulo-regiao:focus-visible { outline: none; }
-.leaflet-interactive.continente-area:hover { fill-opacity: .12; }
+/* Dica ao passar o mouse numa região ou cidade do mapa global */
+.leaflet-tooltip.dica-regiao { display: grid; gap: 2px; width: max-content; max-width: 230px; padding: 8px 12px; border-radius: 10px; font-size: .8125rem; line-height: 1.35; white-space: normal; }
+.dica-regiao strong { font-size: .9375rem; }
+.dica-regiao small { color: var(--azul-escuro); font-weight: 600; margin-top: 2px; }
+@media (hover: none) { .dica-regiao small { display: none; } }
+/* Caminho da região no card: Mundo › América do Sul › Brasil */
+.trilha { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; margin: -4px 0 6px; font-size: .8125rem; color: var(--texto-suave); }
+.trilha button { border: 0; background: none; padding: 4px 2px; color: var(--azul-escuro); font: inherit; font-weight: 600; cursor: pointer; }
+.trilha button:hover { text-decoration: underline; }
+.regiao-resumo { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--superficie-suave); font-size: .875rem; line-height: 1.4; }
+.regiao-resumo b { font-size: 1.05rem; }
 /* Ranking: 100 cidades por vez */
 .ranking-global li.ranking-mais { list-style: none; }
 .ranking-global li.ranking-mais button { justify-content: center; color: var(--azul-escuro); font-weight: 600; }

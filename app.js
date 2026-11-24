@@ -27,6 +27,7 @@
   let pedidoCidade = 0;     // ignora respostas de uma cidade que já não está aberta
   let temporizadorAviso = null;
   let navegacao = null, dadosProntos = false;
+  let trilhaCaminhos = [];  // níveis do caminho mostrado no card (Mundo › continente › país)
 
   // ===== Utilidades =====
   function escapar(texto) {
@@ -266,10 +267,20 @@
   function desenharNavegacaoRegional(caminho) {
     const regioes = window.RegioesMapa;
     const regiao = regioes.obter(caminho.at(-1));
-    const pai = regioes.obter(caminho.at(-2));
     $("regiao-titulo").textContent = regiao?.nome ?? "Mapa global";
-    $("voltar-regiao").hidden = !caminho.length;
-    $("voltar-regiao").textContent = `‹ ${pai?.nome ?? "Mapa global"}`;
+    // Caminho até aqui ("Mundo › América do Sul › Brasil"): cada nome volta para aquele nível.
+    trilhaCaminhos = [[], ...caminho.slice(0, -1).map((_, i) => caminho.slice(0, i + 1))];
+    $("trilha-regiao").hidden = !caminho.length;
+    $("trilha-regiao").innerHTML = caminho.length ? trilhaCaminhos.map((nivel, i) =>
+      `${i ? '<span aria-hidden="true">›</span>' : ""}<button type="button" data-nivel="${i}">${escapar(i ? regioes.obter(nivel.at(-1))?.nome ?? "Região" : "Mundo")}</button>`).join("") : "";
+    $("voltar-regiao").hidden = true;
+    // Resumo da região escolhida: quantas cidades e quanto da população chega aos 4 tipos.
+    const soma = caminho.length ? window.MapaMundo.estatistica?.(caminho.at(-1)) : null;
+    $("regiao-resumo").hidden = !soma;
+    if (soma) {
+      $("regiao-resumo").innerHTML = `<b>${inteiro.format(soma.cidades)}</b> ${soma.cidades === 1 ? "cidade analisada" : "cidades analisadas"}`
+        + (Number.isFinite(soma.percentual) ? ` · <b>${pct(soma.percentual)}</b> da população chega aos 4 tipos de serviço em até 15 min a pé` : "");
+    }
     const filhas = regioes.filhas(caminho);
     const proximo = filhas[0]?.id.split(":")[0];
     const seletor = $("seletor-regiao");
@@ -280,9 +291,14 @@
       seletor.add(new Option(filha.nome, filha.id));
     }
     seletor.hidden = !filhas.length;
-    $("regiao-orientacao").textContent = filhas.length
-      ? "Escolha uma região no seletor ou explore o mapa."
-      : "Clique em uma cidade no mapa ou pesquise pelo nome.";
+    // Orientação do nível: o que clicar (ou tocar, no celular) e o que acontece.
+    const acao = window.matchMedia("(hover: none)").matches ? "Toque" : "Clique";
+    const orientacao = {
+      continente: `${acao} em um continente no mapa ou escolha na lista. Também dá para pesquisar uma cidade pelo nome.`,
+      pais: `${acao} em um país no mapa ou escolha na lista.`,
+      estado: `${acao} em um estado no mapa ou escolha na lista.`,
+    };
+    $("regiao-orientacao").textContent = orientacao[proximo] ?? `${acao} em uma cidade no mapa para ver o acesso dela, ou pesquise pelo nome.`;
     ajustarZoomRegional(true);
   }
 
@@ -375,6 +391,11 @@
     }
     $("voltar").addEventListener("click", () => navegacao.voltarGlobal());
     $("voltar-regiao").addEventListener("click", () => navegacao.voltarGlobal());
+    $("trilha-regiao").addEventListener("click", evento => {
+      const botao = evento.target.closest("button[data-nivel]");
+      const destino = botao ? trilhaCaminhos[Number(botao.dataset.nivel)] : null;
+      if (destino) navegacao.abrirHierarquia(destino);
+    });
     $("seletor-regiao").addEventListener("change", evento => {
       const seletor = evento.currentTarget;
       const destino = window.RegioesMapa.obter(seletor.value);

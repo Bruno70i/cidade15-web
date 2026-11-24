@@ -25,7 +25,8 @@
   let positivas = [];          // notas >= 0,05 em ordem (refeitas só quando as notas mudam)
   let rankingPendente = null;  // ranking guardado para desenhar quando o menu abrir
   let pendente = null;         // vista pedida antes de os contornos chegarem
-  let realce, areasContinentes; // contorno da região escolhida; áreas clicáveis dos continentes
+  let realce, camadaFilhas;     // contorno da região escolhida; regiões do próximo nível (clicáveis)
+  let estatisticasRegioes = null; // cidades e população com acesso, por região (para as dicas e o card)
   let textoResumo = "";
   const inteiro = new Intl.NumberFormat("pt-BR", {maximumFractionDigits:0});
   // Cópia com menos pontos (simplificar.js); sem o módulo, usa a forma original.
@@ -89,11 +90,11 @@
       camada = desejada;
     }
     camada.setStyle(estilo);
-    if (visivel && !mapa.hasLayer(camada)) camada.addTo(mapa);
+    if (visivel && !mapa.hasLayer(camada)) { camada.addTo(mapa); ordenarCamadas(); }
   }
 
-  // Contorno da região escolhida; no mapa global, o contorno de cada continente com cidades.
-  // O continente usa uma forma simples e unificada (dados/continentes.geojson), sem fiordes nem ilhotas.
+  // Contorno escuro da região escolhida. O continente usa uma forma simples e unificada
+  // (dados/continentes.geojson), sem fiordes nem ilhotas.
   function desenharRealce() {
     realce?.clearLayers();
     if (!globalVisivel || !window.L.geoJSON || !window.L.layerGroup) return;
@@ -106,31 +107,82 @@
       window.L.geoJSON(forma, {interactive:false, style:linha(leve ? "#2855a8" : "#0f1b33", leve ? 1.5 : 2.2, 0.95)}).addTo(realce);
     };
     const id = caminhoAtual.at(-1);
-    if (!id) {
-      for (const continente of window.RegioesMapa?.filhas([]) ?? []) contornar(window.RegioesMapa.forma?.(continente.id), true);
-    } else if (id.startsWith("continente:")) {
+    if (!id) return;
+    if (id.startsWith("continente:")) {
       contornar(window.RegioesMapa?.forma?.(id));
     } else {
       contornar(simplificada(window.RegioesMapa?.obter(id)?.feature, 0.01));
     }
   }
-  // Mapa global: a forma de cada continente com cidades fica clicável (leve tom azul ao passar o mouse).
-  function desenharContinentes() {
-    areasContinentes?.clearLayers();
-    if (!globalVisivel || caminhoAtual.length || !window.L.featureGroup) return;
-    const continentes = window.RegioesMapa?.filhas([]) ?? [];
-    if (!continentes.length) return;
-    areasContinentes ??= window.L.featureGroup();
-    for (const continente of continentes) {
-      const forma = window.RegioesMapa.forma?.(continente.id);
-      if (!forma) continue;
-      window.L.geoJSON(forma, {
-        style:{className:"continente-area", stroke:false, fill:true, fillColor:"#2f6fe4", fillOpacity:0.04},
-        onEachFeature(feature, camadaForma) { camadaForma.on("click", () => aoEscolherRegiao(continente.caminho)); },
-      }).addTo(areasContinentes);
+  // ===== Navegação por regiões =====
+  // Cidades e população com acesso aos 4 tipos de serviço, somadas por região.
+  function estatisticaDe(id) {
+    if (!estatisticasRegioes) {
+      estatisticasRegioes = new Map();
+      for (const item of resumoGeral) {
+        for (const nivel of window.RegioesMapa?.caminhoCidade(item.city_id) ?? []) {
+          const soma = estatisticasRegioes.get(nivel) ?? {cidades:0, populacao:0, comAcesso:0};
+          soma.cidades++;
+          if (Number.isFinite(item.total_population)) soma.populacao += item.total_population;
+          if (Number.isFinite(item.selected_population)) soma.comAcesso += item.selected_population;
+          estatisticasRegioes.set(nivel, soma);
+        }
+      }
     }
-    if (!mapa.hasLayer(areasContinentes)) areasContinentes.addTo(mapa);
-    areasContinentes.bringToBack(); // embaixo das cidades: clicar numa cidade continua abrindo a cidade
+    const soma = estatisticasRegioes.get(id);
+    return soma ? {...soma, percentual: soma.populacao ? 100 * soma.comAcesso / soma.populacao : null} : null;
+  }
+  const temMouse = () => window.matchMedia?.("(hover: hover)")?.matches ?? true;
+  const textoCidades = n => `${inteiro.format(n)} ${n === 1 ? "cidade analisada" : "cidades analisadas"}`;
+  // Dica de uma região: nome, quantas cidades e quanto da população chega aos 4 tipos.
+  function dicaRegiao(regiao) {
+    const soma = estatisticaDe(regiao.id);
+    const nome = regiao.nome ?? PAISES[regiao.pais] ?? regiao.pais;
+    return `<strong>${escapar(nome)}</strong><span>${escapar(textoCidades(soma?.cidades ?? regiao.quantidade))}</span>`
+      + (Number.isFinite(soma?.percentual) ? `<span><b>${escapar(pct(soma.percentual))}</b> da população chega aos 4 tipos de serviço</span>` : "")
+      + "<small>Clique para abrir</small>";
+  }
+  function dicaCidade(feature) {
+    const id = idDe(feature), valor = notas.get(id);
+    if (!cidades.has(id)) return `<strong>${escapar(feature.properties.name)}</strong><span>Ainda não analisada</span>`;
+    return `<strong>${escapar(feature.properties.name)}</strong>`
+      + (Number.isFinite(valor) ? `<span><b>${escapar(pct(valor))}</b> da população com acesso ${escapar(textoCombinacao())}</span>` : "")
+      + "<small>Clique para abrir a cidade</small>";
+  }
+  function formaDaRegiao(regiao) {
+    if (regiao.id.startsWith("continente:")) return window.RegioesMapa.forma?.(regiao.id) ?? null;
+    return simplificada(regiao.feature, regiao.id.startsWith("pais:") ? 0.05 : 0.02);
+  }
+  // Regiões do próximo nível (continentes no mundo, países no continente, estados no país):
+  // contorno fino sempre visível; ao passar o mouse, destaque + nome; ao clicar, abre.
+  // No nível de estado não há camada: as próprias cidades são clicáveis.
+  function desenharFilhas() {
+    camadaFilhas?.clearLayers();
+    if (!globalVisivel || !window.L.featureGroup || !window.L.geoJSON) return;
+    const filhas = window.RegioesMapa?.filhas(caminhoAtual) ?? [];
+    if (!filhas.length) return;
+    camadaFilhas ??= window.L.featureGroup();
+    const mundo = !caminhoAtual.length;
+    const normal = {className:"regiao-filha", color:mundo ? "#2855a8" : "#0f1b33", weight:mundo ? 1.5 : 1,
+      opacity:mundo ? 0.9 : 0.45, fill:true, fillColor:"#2f6fe4", fillOpacity:0.01};
+    const destaque = {color:"#0f1b33", weight:2.5, opacity:1, fillOpacity:0.18};
+    for (const regiao of filhas) {
+      const forma = formaDaRegiao(regiao);
+      if (!forma) continue;
+      window.L.geoJSON(forma, {style:normal, smoothFactor:1.5, onEachFeature(feature, camadaForma) {
+        if (temMouse()) camadaForma.bindTooltip(() => dicaRegiao(regiao), {sticky:true, direction:"top", offset:[0, -8], className:"dica-regiao"});
+        camadaForma.on("mouseover", () => camadaForma.setStyle(destaque));
+        camadaForma.on("mouseout", () => camadaForma.setStyle(normal));
+        camadaForma.on("click", () => { camadaForma.closeTooltip?.(); aoEscolherRegiao(regiao.caminho); });
+      }}).addTo(camadaFilhas);
+    }
+    if (!mapa.hasLayer(camadaFilhas)) camadaFilhas.addTo(mapa);
+    ordenarCamadas();
+  }
+  // Cidades embaixo; regiões clicáveis por cima delas; contorno escuro da região no topo.
+  function ordenarCamadas() {
+    if (camadaFilhas && mapa.hasLayer(camadaFilhas)) camadaFilhas.bringToFront();
+    realce?.eachLayer?.(camadaLinha => camadaLinha.bringToFront?.());
   }
   function escolher(feature) {
     const id = idDe(feature);
@@ -141,8 +193,9 @@
     const destino = window.RegioesMapa?.caminhoCidade(id) ?? [];
     const dentroDaRegiao = caminhoAtual.every((nivel, i) => nivel === destino[i]);
     if (!dentroDaRegiao) {
-      const nivelPais = destino.findIndex(nivel => nivel.startsWith("pais:"));
-      if (nivelPais >= 0) aoEscolherRegiao(destino.slice(0, nivelPais + 1));
+      // Cidade de outra região do mesmo nível (ex.: outro estado): abre essa região.
+      const nivel = Math.min(destino.length, Math.max(caminhoAtual.length, 1));
+      if (nivel) aoEscolherRegiao(destino.slice(0, nivel));
       return;
     }
     if (destino.length > caminhoAtual.length) {
@@ -150,7 +203,9 @@
     } else aoEscolher(id);
   }
   function preparar(feature, forma) {
-    forma.on("click", () => escolher(feature));
+    // Dica só com mouse: no celular o toque já abre a cidade (e a dica ficava presa na tela).
+    if (temMouse()) forma.bindTooltip?.(() => dicaCidade(feature), {sticky:true, direction:"top", offset:[0, -8], className:"dica-regiao"});
+    forma.on("click", () => { forma.closeTooltip?.(); escolher(feature); });
   }
   const nomePais = nome => String(nome ?? "").normalize("NFD")
     .replace(/\p{M}/gu, "").trim().toLowerCase();
@@ -215,8 +270,11 @@
     if (!mapa.hasLayer(destaques)) destaques.addTo(mapa);
     const vista = mapa.getBounds();
     const tamanho = mapa.getSize();
+    // Rótulos com nome no mundo (continentes) e quando há poucas regiões para escolher
+    // (ex.: os 4 países da Europa). Com muitas (27 estados), o contorno e a lista bastam.
+    const comRotulo = !caminhoAtual.length || filhas.length <= 8;
     for (const regiao of marcadores) {
-      if (regiao.id?.startsWith("pais:")) continue;
+      if (regiao.id && (!comRotulo || !regiao.bounds)) continue;
       const sudoeste = regiao.bounds.getSouthWest(), nordeste = regiao.bounds.getNorthEast();
       const a = mapa.latLngToContainerPoint(sudoeste), b = mapa.latLngToContainerPoint(nordeste);
       // O tamanho na tela decide quando os contornos ja orientam a navegacao.
@@ -232,8 +290,8 @@
         const posicao = [centro.lat, centro.lng + deslocamento];
         const ponto = mapa.latLngToContainerPoint(posicao);
         if (ponto.y < 0 || ponto.y > tamanho.y) continue;
-        // Continentes ganham um rótulo com o nome e o total; as outras regiões, um ponto.
-        const icon = regiao.id?.startsWith("continente:")
+        // Regiões ganham um rótulo com o nome e o total de cidades.
+        const icon = regiao.id
           ? window.L.divIcon({className:"rotulo-regiao", iconSize:null, iconAnchor:[0,0],
             html:`<span><b>${escapar(pais)}</b><small>${escapar(`${inteiro.format(regiao.quantidade)} ${regiao.quantidade === 1 ? "cidade analisada" : "cidades analisadas"}`)}</small></span>`})
           : window.L.divIcon({className:"regiao-analisada",iconSize:[36,36],iconAnchor:[18,18],
@@ -322,8 +380,12 @@
       camada = !detalhado && camadaLonge ? camadaLonge : camadaPerto;
       if (visivel) camada.addTo(mapa);
       await window.RegioesMapa?.atualizar(geometrias, resumoGeral).catch(erro => console.warn(erro.message));
+      estatisticasRegioes = null; // cada cidade agora sabe sua região: refaz os totais
       if (caminhoAtual.length) camada.setStyle(estilo); // agora cada cidade sabe sua região
       mensagem(textoResumo);
+      // Primeiro o card (caminho e resumo da região), depois o enquadramento: assim o
+      // mapa já é enquadrado com o card no tamanho final e nada fica escondido atrás dele.
+      window.MapaMundo.aoMudarRegioes();
       if (globalVisivel && pendente) {
         // Alguém pediu o mapa global (ou uma região) antes de os contornos chegarem.
         const vista = pendente; pendente = null;
@@ -331,9 +393,8 @@
       } else {
         desenharDestaques();
         desenharRealce();
-        desenharContinentes();
+        desenharFilhas();
       }
-      window.MapaMundo.aoMudarRegioes();
     })();
     try { await carregandoContornos; } finally { carregandoContornos=null; }
   }
@@ -366,7 +427,7 @@
       resumoGeral = resumo;
       atualizarRanking(resumo);
       cidades = new Map(resumo.map(item=>[String(item.city_id),item]));
-      if (mudou) { pedido++; combinacoes.clear(); }
+      if (mudou) { pedido++; combinacoes.clear(); estatisticasRegioes = null; }
       if (marcadas().length === 4) aplicarNotas(resumo);
       else if (mudou && mapa) trocarCombinacao({});
       if (contornos && mudou) carregarContornos().catch(erro=>mensagem(erro.message));
@@ -379,6 +440,12 @@
     },
     mostrar(margens, vista = null, caminho = []) {
       const mudouRegiao = caminho.join("|") !== caminhoAtual.join("|");
+      // Já estava no mapa global: a troca de região é um voo suave, não um pulo.
+      const animar = globalVisivel && Boolean(camada) && Boolean(mapa.hasLayer?.(camada)) && Boolean(mapa.flyToBounds)
+        && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const enquadrar = (limites, opcoes) => animar
+        ? mapa.flyToBounds(limites, {...opcoes, duration:0.8})
+        : mapa.fitBounds(limites, {...opcoes, animate:false});
       globalVisivel = true;
       caminhoAtual = caminho;
       margensAtuais = typeof margens === "function" ? margens : () => margens || {};
@@ -397,7 +464,7 @@
       const regiao = window.RegioesMapa?.obter(caminho.at(-1));
       if (regiao) {
         window.CityMapViewport.resize(mapa);
-        mapa.fitBounds(regiao.bounds, {...margensAtuais(), maxZoom:12, animate:false});
+        enquadrar(regiao.bounds, {...margensAtuais(), maxZoom:12});
       } else if (vista) {
         window.CityMapViewport.resize(mapa);
         mapa.setView(vista.centro, vista.zoom, {animate:false});
@@ -422,25 +489,27 @@
               alvo = [...continentes].sort((x, y) => y.quantidade - x.quantidade)[0].cidades;
             }
           }
-          mapa.fitBounds(alvo.pad(0.1), {...opcoes, maxZoom:4, animate:false});
+          enquadrar(alvo.pad(0.1), {...opcoes, maxZoom:4});
         } else window.CityMapViewport.showWorld(mapa);
       }
       marcarZoom();
       mostrarBordasPaises();
-      desenharContinentes();
       desenharRealce();
+      desenharFilhas();
       desenharDestaques();
     },
     esconder() {
       globalVisivel = false;
       pendente = null;
       realce?.clearLayers();
-      areasContinentes?.clearLayers();
+      camadaFilhas?.clearLayers();
       if (bordasPaises && mapa.hasLayer(bordasPaises)) mapa.removeLayer(bordasPaises);
       destaques?.clearLayers();
       if (destaques && mapa.hasLayer(destaques)) mapa.removeLayer(destaques);
       if (camada && mapa.hasLayer(camada)) mapa.removeLayer(camada);
     },
+    // Totais de uma região (cidades, população e % com acesso aos 4 tipos) para o card.
+    estatistica: id => estatisticaDe(id),
     notaECor(id) {
       const valor = notas.get(String(id));
       return valor === undefined ? null : {texto:pct(valor),cor:cor(valor)};

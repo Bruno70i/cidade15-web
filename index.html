@@ -11,7 +11,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="marca/icone-32.png?v=20261124-marca">
   <link rel="apple-touch-icon" href="marca/icone-180.png?v=20261124-marca">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261102-interface-18">
-  <link rel="stylesheet" href="style.css?v=20261124-leve">
+  <link rel="stylesheet" href="style.css?v=20261124-regioes3">
   <!-- Ordem importa: o Leaflet primeiro, o app.js por último (ele usa todos os outros). -->
   <script src="vendor/leaflet/leaflet.js?v=20261102-interface-18" defer></script>
   <script src="browser-cache.js?v=20261124-melhorias" defer></script>
@@ -23,7 +23,7 @@
   <script src="calor.js?v=20261102-interface-18" defer></script>
   <script src="map-viewport.js?v=20261102-interface-18" defer></script>
   <script src="regioes.js?v=20261124-leve" defer></script>
-  <script src="mapa-mundo.js?v=20261124-leve" defer></script>
+  <script src="mapa-mundo.js?v=20261124-regioes3" defer></script>
   <script src="mapa-cidade.js?v=20261124-melhorias" defer></script>
   <script src="simulacao-vista.js?v=20261102-interface-18" defer></script>
   <script src="simulacao-locais.js?v=20261102-interface-18" defer></script>
@@ -31,7 +31,7 @@
   <script src="otimizacao.js?v=20261124-melhorias" defer></script>
   <script src="busca.js?v=20261102-interface-18" defer></script>
   <script src="navegacao.js?v=20261103-hierarquia" defer></script>
-  <script src="app.js?v=20261124-leve" defer></script>
+  <script src="app.js?v=20261124-regioes3" defer></script>
 </head>
 
 <body>
@@ -101,11 +101,13 @@
     <button id="recolher-cartao" class="alca" type="button" aria-expanded="true" aria-label="Minimizar o painel"><i data-icone="seta"></i></button>
     <!-- Sem cidade aberta: mapa global -->
     <div id="cartao-estado">
+      <nav id="trilha-regiao" class="trilha" aria-label="Você está em" hidden></nav>
       <div class="cartao-topo sempre-visivel">
         <h2 class="titulo-icone"><i data-icone="mapa"></i><span id="regiao-titulo">Mapa global</span></h2>
         <button id="voltar-regiao" class="botao-texto" type="button" hidden></button>
       </div>
       <select id="seletor-regiao" class="seletor-regiao sempre-visivel" aria-label="Escolher região" hidden></select>
+      <p id="regiao-resumo" class="regiao-resumo" hidden></p>
       <p id="regiao-orientacao" class="suave">Clique em um continente no mapa para começar, ou pesquise uma cidade pelo nome.</p>
       <fieldset class="combinacao" id="combinacao">
         <legend>Pintar pelo acesso a</legend>
