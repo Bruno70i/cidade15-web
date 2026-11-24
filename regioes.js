@@ -21,7 +21,7 @@
   const normalizar = valor => String(valor ?? "").normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase();
   const regioes = new Map(), caminhos = new Map();
   const L = window.L;
-  let bases, paisesCarregados;
+  let bases, paisesCarregados, paisesBase = null;
 
   async function lerBase(url) {
     const resposta = await fetch(url);
@@ -56,9 +56,38 @@
         dentroDoAnel(ponto, anel) && !furos.some(furo => dentroDoAnel(ponto, furo)));
   }
 
-  function registrar(id, nome, pais, caminho, bounds, cidadeBounds) {
+  // Contorno de um continente: junta os países dele e apaga as fronteiras internas.
+  // No Natural Earth, países vizinhos usam exatamente os mesmos pontos na fronteira:
+  // um trecho que aparece em dois países é fronteira interna; o que aparece uma vez
+  // só é a borda do continente. Devolve linhas [[lat, lon], ...] para o Leaflet.
+  const contornosContinentes = new Map();
+  function contornoContinente(continente, paises) {
+    if (contornosContinentes.has(continente)) return contornosContinentes.get(continente);
+    const aneisDoContinente = paises.features.filter(f => f.properties.continente === continente)
+      .flatMap(f => poligonos(f.geometry).flat());
+    const chave = (a, b) => { const p = `${a[0]},${a[1]}`, q = `${b[0]},${b[1]}`; return p < q ? `${p}|${q}` : `${q}|${p}`; };
+    const usos = new Map();
+    for (const anel of aneisDoContinente) {
+      for (let i = 1; i < anel.length; i++) { const k = chave(anel[i - 1], anel[i]); usos.set(k, (usos.get(k) ?? 0) + 1); }
+    }
+    const linhas = [];
+    for (const anel of aneisDoContinente) {
+      let atual = [];
+      for (let i = 1; i < anel.length; i++) {
+        if (usos.get(chave(anel[i - 1], anel[i])) === 1) {
+          if (!atual.length) atual.push([anel[i - 1][1], anel[i - 1][0]]);
+          atual.push([anel[i][1], anel[i][0]]);
+        } else if (atual.length) { linhas.push(atual); atual = []; }
+      }
+      if (atual.length) linhas.push(atual);
+    }
+    contornosContinentes.set(continente, linhas);
+    return linhas;
+  }
+
+  function registrar(id, nome, pais, caminho, bounds, cidadeBounds, feature = null) {
     if (!regioes.has(id)) {
-      regioes.set(id, {id, nome, pais, caminho, bounds: L.latLngBounds([]), cidades:L.latLngBounds([]), quantidade:0});
+      regioes.set(id, {id, nome, pais, caminho, feature, bounds: L.latLngBounds([]), cidades:L.latLngBounds([]), quantidade:0});
     }
     const regiao = regioes.get(id);
     regiao.bounds.extend(bounds);
@@ -66,13 +95,12 @@
     regiao.quantidade++;
   }
 
-  window.RegioesMapa = {
-    carregarPaises,
-    async atualizar(cidades, resumo = []) {
-      bases ??= Promise.all([
-        carregarPaises(),
-        lerBase("dados/estados.geojson"),
-      ]).then(([paises, estados]) => {
+  // Começa a baixar países e estados (pode ser chamado cedo, junto com os contornos das cidades).
+  function preparar() {
+    bases ??= Promise.all([
+      carregarPaises(),
+      lerBase("dados/estados.geojson?v=20261124-estados"),
+    ]).then(([paises, estados]) => {
         const paisPorNome = new Map(), estadosPorPais = new Map();
         for (const feature of paises.features) {
           const pais = {feature, bounds:L.geoJSON(feature).getBounds()};
@@ -83,9 +111,17 @@
           if (!estadosPorPais.has(pais)) estadosPorPais.set(pais, []);
           estadosPorPais.get(pais).push({feature, bounds:L.geoJSON(feature).getBounds()});
         }
-        return {paisPorNome, estadosPorPais};
+        return {paisPorNome, estadosPorPais, paises};
       }).catch(erro => { bases = null; throw erro; });
-      const {paisPorNome, estadosPorPais} = await bases;
+    return bases;
+  }
+
+  window.RegioesMapa = {
+    carregarPaises,
+    preparar,
+    async atualizar(cidades, resumo = []) {
+      const {paisPorNome, estadosPorPais, paises} = await preparar();
+      paisesBase = paises;
       regioes.clear();
       caminhos.clear();
       const comContorno = new Set(cidades.map(({feature}) => String(feature.properties.city_id)));
@@ -104,7 +140,7 @@
           registrar(caminho.at(-1), continentes[continente], null, [...caminho], limitesContinentes[continente], referencia);
         }
         caminho.push(`pais:${codigo ?? country}`);
-        registrar(caminho.at(-1), nomes[codigo] ?? country, country, [...caminho], pais?.bounds ?? referencia, referencia);
+        registrar(caminho.at(-1), nomes[codigo] ?? country, country, [...caminho], pais?.bounds ?? referencia, referencia, pais?.feature ?? null);
         if (!bounds) {
           caminhos.set(String(city_id), caminho);
           continue;
@@ -118,10 +154,20 @@
         if (unidade) {
           const {id, nome} = unidade.feature.properties;
           caminho.push(`estado:${id}`);
-          registrar(caminho.at(-1), nome, country, [...caminho], unidade.bounds, bounds);
+          registrar(caminho.at(-1), nome, country, [...caminho], unidade.bounds, bounds, unidade.feature);
         }
         caminhos.set(String(city_id), caminho);
       }
+    },
+    // Linhas do contorno de um continente (ex.: "continente:South America").
+    contorno(id) {
+      const continente = String(id ?? "").replace(/^continente:/, "");
+      return paisesBase && continentes[continente] ? contornoContinente(continente, paisesBase) : [];
+    },
+    // Países do continente (para a área clicável no mapa global).
+    paisesDoContinente(id) {
+      const continente = String(id ?? "").replace(/^continente:/, "");
+      return paisesBase ? paisesBase.features.filter(f => f.properties.continente === continente) : [];
     },
     caminhoCidade: id => caminhos.get(String(id)) ?? [],
     obter: id => regioes.get(id),

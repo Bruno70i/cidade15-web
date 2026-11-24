@@ -116,6 +116,17 @@
     }
   }
 
+  // Botões "Antes / Com os novos locais" (aparecem junto com o resultado da simulação).
+  function desenharCenario() {
+    const depois = window.MapaCidade.vendoDepois();
+    for (const botao of document.querySelectorAll("[data-cenario]")) {
+      botao.setAttribute("aria-pressed", String((botao.dataset.cenario === "depois") === depois));
+    }
+    $("nota-cenario").textContent = depois
+      ? "Com os novos locais, as cores são uma estimativa ajustada ao resultado exato da simulação."
+      : "As cores mostram a situação atual, sem os novos locais.";
+  }
+
   // Dica que aparece em cima da barra ao passar o mouse (ou focar pelo teclado).
   function mostrarDica(evento) {
     if (evento.type === "pointerover" && (celular() || evento.pointerType === "touch")) return;
@@ -161,7 +172,9 @@
         <li>${window.Icones.svg("caminhar")}<span>Até <b>${decimal.format(execucao.threshold_minutes)} min</b> a pé, a ${decimal.format(execucao.speed_kmh)} km/h</span></li>
         <li>${window.Icones.svg("calendario")}<span>Análise de ${escapar(dataBR.format(new Date(execucao.processed_at)))}</span></li>
       </ul>
-      <p class="suave">A simulação compara percentuais de acesso. As cores do mapa representam a situação atual.</p>
+      <p class="suave">A simulação compara percentuais de acesso (cálculo exato pela rede de ruas). ${window.MapaCidade.vendoDepois()
+        ? "As cores do mapa estão mostrando uma estimativa com os novos locais; o botão “Antes” volta à situação atual."
+        : "As cores do mapa representam a situação atual."}</p>
       <button class="botao-texto" type="button" data-painel="metodologia">${window.Icones.svg("livro")}Como funciona o cálculo</button>`;
   }
 
@@ -386,6 +399,20 @@
       $("info").scrollTop = 0;
       $("info").querySelector(".botao-fechar").focus();
     });
+    // Cores do mapa de calor depois de uma simulação: antes x com os novos locais.
+    for (const botao of document.querySelectorAll("[data-cenario]")) {
+      botao.addEventListener("click", () => {
+        window.MapaCidade.mostrarDepois(botao.dataset.cenario === "depois");
+        desenharCenario();
+        desenharInfo();
+        desenharLegenda();
+      });
+    }
+    // Logo "15": volta ao mapa global.
+    $("marca-topo").addEventListener("click", evento => {
+      evento.preventDefault();
+      if (dadosProntos) navegacao.voltarGlobal();
+    });
     $("sim-ir-locais").addEventListener("click", () => {
       if (celular() && !$("cartao").classList.contains("recolhido")) alternarCartao();
       window.Simulacao.centralizar(margens());
@@ -497,7 +524,9 @@
       const resumo = await window.CityDataSource.summary();
       if (!resumo.length) throw new Error("Ainda não há cidades com análise concluída. Tente novamente mais tarde.");
       aplicarResumo(resumo);
-      await window.MapaMundo.iniciar({
+      // Os contornos das cidades (arquivo grande) carregam em segundo plano: a busca,
+      // o ranking e os links diretos de cidade já funcionam sem esperar por eles.
+      const contornos = window.MapaMundo.iniciar({
         mapaDaTela: mapa, resumo, aoEscolherCidade: navegarParaCidade,
         aoAbrirRegiao: caminho => navegacao.abrirHierarquia(caminho),
       });
@@ -506,6 +535,7 @@
       dadosProntos = true;
       // Le o endereco atual: o usuario pode ter voltado durante o carregamento.
       mostrarRota(navegacao.ler());
+      contornos.catch(erro => avisar(erro.message || "Não foi possível carregar os contornos das cidades."));
     } catch (erro) {
       carregando(false);
       $("erro-inicial-texto").textContent = erro.message || "Não foi possível carregar os resultados.";
@@ -521,6 +551,10 @@
   window.MapaMundo.aoMudarNotas = () => { if (!estado.cidade) desenharLegenda(); };
   window.MapaCidade.iniciar(mapa, { carregando, erro: avisar });
   window.Simulacao.iniciar(mapa, ({concluida = false} = {}) => {
+    // Resultado novo: o mapa de calor passa a mostrar o "depois"; sem resultado, volta ao atual.
+    window.MapaCidade.definirCenario(window.Simulacao.resultado());
+    desenharCenario();
+    if (estado.cidade) desenharLegenda();
     desenharCartao(); desenharInfo();
     if (window.Simulacao.emAdicao() && celular()) {
       $("legenda").open = false;

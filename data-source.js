@@ -5,7 +5,33 @@
 // porque o nginx bloqueia muitas chamadas seguidas (erro 429).
 (() => {
   const mapasCache = window.CityCache?.create();
+  // Contornos: ~14 MB de texto. Ficam num banco próprio por até 7 dias; a chave muda
+  // sozinha quando entram cidades novas (o desenho de uma cidade não muda).
+  const contornosCache = window.CityCache?.create({ banco: "cidade15-contornos", maxEntries: 2, maxBytes: 80 * 1024 * 1024 });
+  const SETE_DIAS = 7 * 24 * 60 * 60 * 1000;
   const contornosPendentes = new Map();
+  // Assinatura curta da lista de cidades (para a chave do cache não ter milhares de IDs).
+  function assinatura(texto) {
+    let hash = 2166136261;
+    for (let i = 0; i < texto.length; i++) { hash ^= texto.charCodeAt(i); hash = Math.imul(hash, 16777619); }
+    return (hash >>> 0).toString(36);
+  }
+  // Como pedir(), mas devolve o texto e deixa o navegador usar o próprio cache HTTP.
+  async function pedirTexto(caminho) {
+    const resposta = await fetch(caminho);
+    if (!resposta.ok) {
+      const ehJson = (resposta.headers.get("Content-Type") || "").includes("application/json");
+      const dados = ehJson ? await resposta.json().catch(() => null) : null;
+      const erro = new Error(resposta.status === 429
+        ? "Muitas consultas em pouco tempo. Aguarde alguns segundos e tente novamente."
+        : "Não foi possível carregar os contornos das cidades. Tente novamente.");
+      erro.status = resposta.status;
+      erro.detalhe = dados?.detail ?? null;
+      throw erro;
+    }
+    return resposta.text();
+  }
+  const contornosValidos = valor => valor?.type === "FeatureCollection" && Array.isArray(valor.features);
   // Faz o pedido e devolve o JSON. Em erros como 429/502 o nginx responde uma
   // página HTML, então só lemos JSON quando a resposta é JSON de verdade.
   // O erro lançado leva o código HTTP em "status" (a simulação usa o 422).
@@ -29,14 +55,21 @@
   window.CityDataSource = {
     // Um GeoJSON para todas as cidades, inclusive as de outros países.
     boundaries(resumo = []) {
-      const key = `boundaries-v1:${resumo.map(item => String(item.city_id)).sort().join(",")}`;
+      const ids = resumo.map(item => String(item.city_id)).sort().join(",");
+      const key = `boundaries-v2:${resumo.length}:${assinatura(ids)}`;
       if (!contornosPendentes.has(key)) {
         const request = (async () => {
-          const stored = await mapasCache?.get(key, 60 * 60 * 1000).catch(() => null);
-          if (stored?.type === "FeatureCollection" && Array.isArray(stored.features)) return stored;
-          const value = await pedir("/api/v1/cities/boundaries");
-          if (value?.type !== "FeatureCollection" || !Array.isArray(value.features)) throw new Error("Não foi possível carregar os contornos das cidades.");
-          await mapasCache?.set(key, value).catch(() => {});
+          // Antes os contornos nunca entravam no cache (passavam do limite de 12 MB)
+          // e toda visita baixava tudo de novo.
+          const guardado = await contornosCache?.get(key, SETE_DIAS).catch(() => null);
+          if (typeof guardado === "string") {
+            try { const valor = JSON.parse(guardado); if (contornosValidos(valor)) return valor; } catch { /* guardado inválido: baixa de novo */ }
+          }
+          const texto = await pedirTexto("/api/v1/cities/boundaries");
+          let value = null;
+          try { value = JSON.parse(texto); } catch { /* tratado abaixo */ }
+          if (!contornosValidos(value)) throw new Error("Não foi possível carregar os contornos das cidades.");
+          contornosCache?.set(key, texto, texto.length * 2).catch(() => {}); // grava sem atrasar o mapa
           return value;
         })();
         contornosPendentes.set(key, request);

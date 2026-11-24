@@ -11,6 +11,8 @@
   const el = (id) => document.getElementById(id);
   const inteiro = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
   const decimal = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+  const duasCasas = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
+  const pontosPercentuais = (valor) => `${duasCasas.format(valor)} ${Math.abs(valor) === 1 ? "ponto percentual" : "pontos percentuais"}`;
 
   let mapa = null;
   let camada = null;          // marcadores numerados dos locais sugeridos
@@ -89,14 +91,20 @@
     const depois = resultado.simulated_coverage_percentage;
     const total = resultado.locations.length;
     if (!total) {
-      el("otim-resumo").innerHTML = `<strong>Nenhum ponto aumentaria o acesso a ${categoria}.</strong><span>Na rede de ruas desta análise, um novo local não alcançaria moradores que hoje estão sem acesso. O acesso continua em ${pct(antes)}.</span>`;
+      el("otim-resumo").className = "otim-resumo neutro";
+      el("otim-resumo").innerHTML = `<span class="otim-titulo">Nenhum ponto aumentaria o acesso a ${categoria}.</span><span class="otim-explica">Na rede de ruas desta análise, um novo local não alcançaria moradores que hoje estão sem acesso. O acesso continua em ${pct(antes)}.</span>`;
       el("otim-lista").innerHTML = "";
       return;
     }
     const variacao = Math.abs(depois - antes) < 1e-7 ? 0 : depois - antes;
-    const impacto = window.SimulacaoVista.impacto({ antes, depois, variacao });
-    const faltaram = resultado.k_requested > total ? ` Foram sugeridos ${total} de ${resultado.k_requested}: outros pontos não aumentariam o acesso.` : "";
-    el("otim-resumo").innerHTML = `<strong>${total === 1 ? "1 local sugerido" : `${total} locais sugeridos`} para ${categoria}</strong><span>${escapar(impacto.titulo)} ${escapar(impacto.detalhe)}${faltaram}</span>`;
+    const faltaram = resultado.k_requested > total ? `Foram sugeridos ${total} de ${resultado.k_requested}: outros pontos não aumentariam o acesso.` : "";
+    // Destaque: o ganho em letras grandes e verdes; o "de -> para" em negrito.
+    el("otim-resumo").className = variacao > 0 ? "otim-resumo" : "otim-resumo neutro";
+    el("otim-resumo").innerHTML = `
+      <span class="otim-titulo">${total === 1 ? "1 local sugerido" : `${total} locais sugeridos`} para ${categoria}</span>
+      <strong class="otim-ganho">${variacao > 0 ? `+${pontosPercentuais(variacao)}` : "Sem aumento de acesso"}</strong>
+      <span class="otim-de-para">Acesso a ${categoria}: <b>${pct(antes)}</b> → <b>${pct(depois)}</b> da população</span>
+      ${faltaram ? `<span class="otim-falta">${faltaram}</span>` : ""}`;
     const cor = window.Icones.cor(resultado.category);
     el("otim-lista").innerHTML = resultado.locations.map((local) => `
       <li><button type="button" data-rank="${local.rank}">

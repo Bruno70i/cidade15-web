@@ -23,6 +23,11 @@
     let pedido = 0;             // descarta desenhos de categorias antigas
     let avisos = { carregando: () => {}, erro: () => {} }; // funções do app.js
     const guardados = new Map(); // promessas das categorias da cidade atual
+    // Simulação: novos locais e como mostrar o "depois" no mapa de calor.
+    let cenario = null;         // { porCategoria: {health:[{lat,lon}]}, alvos: {health: pp}, fatores: {} }
+    let origemCenario = null;   // resposta da simulação que gerou o cenário
+    let verDepois = false;      // true = cores com os novos locais (estimativa)
+    const FATOR_PADRAO = 1.3;   // caminho pela rua ~30% maior que a linha reta (usado se faltar o ajuste)
 
     function escapar(texto) {
         return String(texto ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -42,10 +47,67 @@
         if (minutos === null) return 0;
         return 1 - Math.min(minutos, 2 * limiar()) / (2 * limiar());
     }
-    function textoDoTempo(minutos) {
+    function textoDoTempo(minutos, estimado = false) {
         if (minutos === null) return "Sem caminho a pé registrado";
         const alvo = categoria === "overall" ? "chegar aos 4 tipos de serviço" : `chegar a ${NOMES[categoria].toLowerCase()}`;
-        return `${numero.format(minutos)} min para ${alvo}`;
+        return `${estimado ? "≈ " : ""}${numero.format(minutos)} min para ${alvo}${estimado ? " (estimativa com os novos locais)" : ""}`;
+    }
+
+    // ===== "Depois" da simulação =====
+    // A API da simulação devolve os percentuais exatos (calculados pela rede de ruas),
+    // mas não o tempo de cada ponto. Para o mapa mostrar onde melhora, cada ponto
+    // ganha um tempo ESTIMADO até o novo local: distância em linha reta x fator / velocidade.
+    // O fator de cada categoria é ajustado para que a parte dos pontos que passa a
+    // ter acesso na amostra bata com o resultado exato da simulação (estratégia "nodes").
+    function metros(a, b) {
+        const latMedia = ((a.lat + b.lat) / 2) * Math.PI / 180;
+        const dx = (b.lon - a.lon) * 111320 * Math.cos(latMedia);
+        const dy = (b.lat - a.lat) * 110540;
+        return Math.hypot(dx, dy);
+    }
+    function velocidade() {
+        return ((execucao?.speed_kmh ?? 3) * 1000) / 60; // metros por minuto
+    }
+    function tempoComNovos(ponto, codigo, fator) {
+        const base = ponto.cats?.[codigo];
+        const novos = cenario?.porCategoria[codigo];
+        if (base === null || base === undefined || !novos?.length) return base;
+        let melhor = base;
+        for (const local of novos) melhor = Math.min(melhor, metros(ponto, local) * fator / velocidade());
+        return melhor;
+    }
+    function fatorDe(codigo) {
+        if (cenario.fatores[codigo] !== undefined) return cenario.fatores[codigo];
+        const alvo = cenario.alvos[codigo];
+        const amostra = pontos.filter((ponto) => ponto.cats?.[codigo] !== undefined);
+        let fator = FATOR_PADRAO;
+        if (amostra.length && Number.isFinite(alvo)) {
+            const t = limiar();
+            const antes = amostra.filter((ponto) => ponto.cats[codigo] !== null && ponto.cats[codigo] <= t).length;
+            const ganho = (k) => 100 * (amostra.filter((ponto) => { const m = tempoComNovos(ponto, codigo, k); return m !== null && m <= t; }).length - antes) / amostra.length;
+            if (alvo <= 0) fator = 50; // a simulação não mostrou ganho: o mapa praticamente não muda
+            else if (ganho(1) <= alvo) fator = 1;
+            else if (ganho(6) >= alvo) fator = 6;
+            else {
+                let baixo = 1, alto = 6; // o ganho diminui quando o fator aumenta
+                for (let i = 0; i < 20; i++) { const meio = (baixo + alto) / 2; if (ganho(meio) > alvo) baixo = meio; else alto = meio; }
+                fator = (baixo + alto) / 2;
+            }
+        }
+        cenario.fatores[codigo] = fator;
+        return fator;
+    }
+    // Tempo exibido: o atual, ou a estimativa com os novos locais.
+    function minutosExibidos(ponto) {
+        if (!verDepois || !cenario) return ponto.min;
+        const codigos = categoria === "overall" ? CATEGORIAS : [categoria];
+        let maior = 0;
+        for (const codigo of codigos) {
+            const m = tempoComNovos(ponto, codigo, fatorDe(codigo));
+            if (m === null || m === undefined) return m === null ? null : ponto.min;
+            maior = Math.max(maior, m);
+        }
+        return maior;
     }
 
     // ===== Contorno da cidade =====
@@ -99,11 +161,9 @@
         const codigos = pedida === "overall" ? CATEGORIAS : [pedida];
         avisos.carregando(true, "Carregando o mapa da cidade…");
         try {
-            const respostas = [];
-            for (const codigo of codigos) {
-                respostas.push(await pedirPontos(analise, codigo, detalhado));
-                if (minha !== geracao || meu !== pedido) return;
-            }
+            // As categorias são pedidas ao mesmo tempo (antes era uma depois da outra).
+            const respostas = await Promise.all(codigos.map((codigo) => pedirPontos(analise, codigo, detalhado)));
+            if (minha !== geracao || meu !== pedido) return;
             pontos = juntarPontos(respostas, codigos);
             locais = [...new Map(respostas.flatMap(resposta => resposta.services).map(local => [local.id, local])).values()];
             desenhar();
@@ -124,7 +184,8 @@
             for (const no of resposta.nodes) {
                 if (!Number.isFinite(no.lat) || !Number.isFinite(no.lon)) continue;
                 const minutos = tempo(no.categories?.[codigos[i]]);
-                const ponto = porId.get(no.id) ?? { id: no.id, lat: no.lat, lon: no.lon, min: 0, vistos: 0 };
+                const ponto = porId.get(no.id) ?? { id: no.id, lat: no.lat, lon: no.lon, min: 0, vistos: 0, cats: {} };
+                ponto.cats[codigos[i]] = minutos; // tempo de cada categoria (usado no "depois" da simulação)
                 ponto.min = ponto.min === null || minutos === null ? null : Math.max(ponto.min, minutos);
                 ponto.vistos++;
                 porId.set(no.id, ponto);
@@ -136,16 +197,18 @@
     // ===== Desenho =====
     function desenhar() {
         camadaPontos.clearLayers();
+        const depois = verDepois && Boolean(cenario);
         if (modo === "calor") {
             // O contorno da cidade corta o calor: nada é pintado fora da divisa.
-            camadaCalor.definir(pontos, (ponto) => posicaoDoTempo(ponto.min), info?.boundary);
+            camadaCalor.definir(pontos, (ponto) => posicaoDoTempo(minutosExibidos(ponto)), info?.boundary);
         } else {
             camadaCalor.definir([], () => 0);
             for (const ponto of pontos) {
+                const minutos = minutosExibidos(ponto);
                 L.circleMarker([ponto.lat, ponto.lon], {
                     renderer: desenho, radius: 4.5, weight: 1, color: "#ffffff",
-                    fillColor: window.Cores.css(posicaoDoTempo(ponto.min)), fillOpacity: 0.95,
-                }).bindTooltip(escapar(textoDoTempo(ponto.min))).addTo(camadaPontos);
+                    fillColor: window.Cores.css(posicaoDoTempo(minutos)), fillOpacity: 0.95,
+                }).bindTooltip(escapar(textoDoTempo(minutos, depois && minutos !== ponto.min))).addTo(camadaPontos);
             }
         }
         desenharLocais();
@@ -216,6 +279,7 @@
             execucao = novaExecucao;
             categoria = novaCategoria;
             info = null;
+            cenario = null; origemCenario = null; verDepois = false;
             const dados = await fonte.metadata(novaExecucao);
             if (minha !== geracao) return;
             info = dados;
@@ -230,7 +294,40 @@
             guardados.clear();
             execucao = null;
             info = null;
+            cenario = null; origemCenario = null; verDepois = false;
         },
+
+        // Recebe a resposta da simulação (ou null). Cada cálculo novo mostra o "depois".
+        definirCenario(resultado) {
+            if (resultado === origemCenario) return;
+            origemCenario = resultado;
+            const porCategoria = {};
+            for (const local of resultado?.added_services ?? []) {
+                if (!Number.isFinite(local.latitude) || !Number.isFinite(local.longitude)) continue;
+                (porCategoria[local.category] ??= []).push({ lat: local.latitude, lon: local.longitude });
+            }
+            if (!Object.keys(porCategoria).length) {
+                cenario = null;
+                verDepois = false;
+            } else {
+                const alvos = {};
+                for (const [codigo, item] of Object.entries(resultado.results ?? {})) {
+                    const nos = item?.nodes;
+                    if (Number.isFinite(nos?.after?.coverage_percentage) && Number.isFinite(nos?.before?.coverage_percentage)) {
+                        alvos[codigo] = nos.after.coverage_percentage - nos.before.coverage_percentage;
+                    }
+                }
+                cenario = { porCategoria, alvos, fatores: {} };
+                verDepois = true;
+            }
+            if (info) desenhar();
+        },
+        mostrarDepois(mostrar) {
+            verDepois = Boolean(mostrar) && Boolean(cenario);
+            if (info) desenhar();
+        },
+        temCenario: () => Boolean(cenario),
+        vendoDepois: () => verDepois && Boolean(cenario),
 
         centralizar(margens) {
             if (!info) return;
@@ -262,8 +359,9 @@
         // Dados da legenda do canto da tela: régua de 0 a 30+ minutos.
         legenda() {
             const t = limiar();
+            const depois = verDepois && Boolean(cenario);
             return {
-                titulo: categoria === "overall" ? "Tempo a pé até os 4 tipos de serviço" : `Tempo a pé até ${NOMES[categoria].toLowerCase()}`,
+                titulo: `${categoria === "overall" ? "Tempo a pé até os 4 tipos de serviço" : `Tempo a pé até ${NOMES[categoria].toLowerCase()}`}${depois ? " — com os novos locais (estimativa)" : ""}`,
                 tituloCurto: "Minutos a pé",
                 degrade: window.Cores.degrade(true, "180deg"), // em cima a cor boa (perto)
                 // "curto" é o texto usado no celular, onde a legenda é estreita.
@@ -273,7 +371,7 @@
                     { posicao: 1, texto: `${numero.format(2 * t)}+ min`, curto: `${numero.format(2 * t)}+` },
                 ],
                 extras: CATEGORIAS.map((codigo) => ({ icone: codigo, texto: NOMES[codigo] })),
-                nota: `O meio da régua é o limite de ${numero.format(t)} minutos. Áreas sem cor não têm pontos de rua na amostra.`,
+                nota: `O meio da régua é o limite de ${numero.format(t)} minutos. Áreas sem cor não têm pontos de rua na amostra.${depois ? " Com os novos locais, as cores são uma estimativa ajustada ao resultado exato da simulação." : ""}`,
             };
         },
     };

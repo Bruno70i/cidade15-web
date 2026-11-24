@@ -50,6 +50,22 @@ body.adicionando #mapa { cursor: crosshair; }
 .regiao-analisada-ponto { width: 16px; height: 16px; border: 3px solid #fff; border-radius: 50%; background: var(--azul); box-shadow: 0 0 0 4px rgba(47,111,237,.25); }
 .regiao-analisada:hover .regiao-analisada-ponto { box-shadow: 0 0 0 6px rgba(47,111,237,.35); }
 .regiao-analisada:focus-visible { outline: 3px solid var(--azul); }
+/* Mapa global: com o mapa afastado as bordas brancas das cidades pequenas cobriam
+   as cores ("mapa lavado"); ficam mais finas e as cores aparecem. */
+.leaflet-container.zoom-longe path.municipio-analisado { stroke-width: 1px; }
+.leaflet-container.zoom-medio path.municipio-analisado { stroke-width: .4px; stroke-opacity: .8; }
+/* Rótulo clicável de cada continente com cidades analisadas */
+.rotulo-regiao { width: auto !important; height: auto !important; background: none; border: 0; }
+.rotulo-regiao > span {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 1px; transform: translate(-50%, -50%);
+  padding: 6px 14px; border: 2px solid var(--azul); border-radius: 99px; background: var(--superficie);
+  box-shadow: var(--sombra); white-space: nowrap; font-size: .8125rem; color: var(--texto); cursor: pointer;
+}
+.rotulo-regiao b { font-weight: 700; }
+.rotulo-regiao small { font-size: .72rem; color: var(--texto-suave); }
+.rotulo-regiao:hover > span, .rotulo-regiao:focus-visible > span { background: #f0f5ff; }
+.rotulo-regiao:focus-visible { outline: none; }
+.leaflet-interactive.continente-area:hover { fill-opacity: .12; }
 .mapa-base { filter: saturate(.7) brightness(1.04) contrast(.92); }
 .leaflet-tooltip { border: 0; border-radius: 8px; box-shadow: var(--sombra); font-size: .8125rem; padding: 6px 10px; color: var(--texto); }
 @media (hover: hover) {
@@ -108,8 +124,13 @@ body.adicionando #mapa { cursor: crosshair; }
 /* Menu (canto superior esquerdo) */
 #botao-menu { top: var(--margem); left: var(--margem); }
 .menu { z-index: 1100; top: calc(var(--margem) + 60px); left: var(--margem); width: 290px; padding: 18px; display: grid; gap: 4px; max-height: calc(100dvh - var(--margem) - 76px); overflow-y: auto; }
-.marca { margin: 0 0 10px; font-weight: 700; font-size: 1.05rem; }
+.marca { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-weight: 700; font-size: 1.05rem; }
 .marca span { color: var(--azul); }
+.marca img { flex: none; }
+/* Logo "15" no topo, ao lado do menu (volta ao mapa global) */
+.marca-topo { top: var(--margem); left: calc(var(--margem) + 60px); display: grid; place-items: center; width: 60px; height: 48px; border-radius: 12px; }
+.marca-topo img { display: block; width: 38px; height: auto; }
+.marca-topo:hover { background: var(--superficie-suave); }
 .item-menu { display: flex; align-items: center; gap: 10px; border: 0; background: none; text-align: left; padding: 9px 10px; border-radius: 10px; font-weight: 600; }
 .item-menu .icone { color: var(--azul); }
 .item-menu:hover { background: var(--superficie-suave); }
@@ -123,7 +144,7 @@ body.adicionando #mapa { cursor: crosshair; }
 /* Busca (topo) */
 .busca {
   top: var(--margem); left: 50%; transform: translateX(-50%);
-  width: min(560px, calc(100% - 2 * var(--margem) - 140px));
+  width: min(560px, calc(100% - 2 * var(--margem) - 270px));
   height: 52px; border-radius: 99px; display: flex; align-items: center; gap: 10px; padding: 0 18px;
 }
 .lupa { width: 22px; height: 22px; color: var(--texto-suave); flex: none; }
@@ -229,16 +250,21 @@ body.adicionando #mapa { cursor: crosshair; }
 .valor-legenda .icone { margin-top: 1px; }
 
 /* Barra: azul = acesso atual, verde = ganho simulado, vermelho = sem acesso */
-.barra { position: relative; display: flex; height: 32px; margin-top: 22px; border-radius: 9px; background: var(--vermelho); overflow: hidden; }
+.barra-area { position: relative; margin-top: 22px; }
+.barra { position: relative; display: flex; height: 32px; border-radius: 9px; background: var(--vermelho); overflow: hidden; }
 .seg { height: 100%; min-width: 0; padding: 0; border: 0; flex: none; transition: width .3s ease; }
 .seg:first-child { border-radius: 8px 0 0 8px; }
 .seg-original { background: var(--azul); }
 .seg-impacto { background: var(--verde); }
 .seg-resto { background: var(--vermelho); border-radius: 0 8px 8px 0; }
 .seg:hover, .seg:focus-visible { filter: brightness(1.08); }
+/* A dica flutua acima da barra: não muda o tamanho do card (antes o card crescia,
+   a barra saía de baixo do mouse, a dica sumia e o card ficava piscando). */
 .dica {
-  position: static; max-width: 100%; margin: 8px 0 0; white-space: normal; overflow-wrap: anywhere;
-  background: var(--superficie-suave); color: var(--texto); font-size: .8125rem; padding: 8px 10px; border-radius: 8px;
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 5; margin: 0;
+  white-space: normal; overflow-wrap: anywhere; pointer-events: none;
+  background: var(--texto); color: #fff; font-size: .8125rem; line-height: 1.4; padding: 8px 10px; border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(15, 27, 51, .25);
 }
 .legenda-barra { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0 0; padding: 0; list-style: none; font-size: .75rem; color: var(--texto); }
 .legenda-barra li { display: flex; align-items: center; gap: 6px; }
@@ -267,8 +293,19 @@ body.adicionando #mapa { cursor: crosshair; }
 .simular .otim-sugerir { width: 100%; margin-top: 14px; }
 #otim-mensagem { margin: 12px 0 0; }
 .otim-resultado { margin-top: 14px; }
-.otim-resumo { margin: 0; font-size: .9rem; line-height: 1.4; }
-.otim-resumo span { display: block; margin-top: 4px; color: var(--texto-suave); font-size: .8125rem; }
+/* Resultado da sugestão em destaque: ganho grande e verde, antes -> depois em negrito */
+.otim-resumo { display: grid; gap: 4px; margin: 0; padding: 12px 14px; border-radius: 12px; background: #ecfdf3; border: 1px solid #b7e4c7; line-height: 1.35; }
+.otim-resumo.neutro { background: var(--superficie-suave); border-color: var(--borda); }
+.otim-titulo { font-size: .8125rem; font-weight: 700; color: var(--texto); }
+.otim-ganho { font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; color: var(--verde); }
+.otim-de-para { font-size: .9375rem; color: var(--texto); }
+.otim-de-para b { font-weight: 800; }
+.otim-falta, .otim-resumo .otim-explica { font-size: .8125rem; color: var(--texto-suave); }
+/* Antes / depois no mapa de calor da simulação */
+.cenario-mapa { display: grid; gap: 6px; }
+.cenario-mapa > span { font-size: .8125rem; font-weight: 600; color: var(--texto-suave); }
+.cenario-mapa .alternador button { font-size: .8125rem; }
+.cenario-mapa .suave { margin: 0; font-size: .75rem; }
 .otim-lista { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
 .otim-lista button {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%;
@@ -340,7 +377,9 @@ body.adicionando #mapa { cursor: crosshair; }
   :root { --margem: 12px; }
   #botao-menu { width: 46px; height: 46px; }
   .menu { top: 66px; width: calc(100% - 24px); }
-  .busca { left: 66px; right: 12px; width: auto; transform: none; height: 46px; }
+  .busca { left: 116px; right: 12px; width: auto; transform: none; height: 46px; }
+  .marca-topo { top: 12px; left: 66px; width: 44px; height: 46px; }
+  .marca-topo img { width: 32px; }
   .legenda { top: 76px; right: 12px; }
   .regua, .marcas { height: 72px; }
   .aviso, .carregando { top: 66px; left: 12px; right: 12px; transform: none; max-width: none; }
@@ -365,7 +404,7 @@ body.adicionando #mapa { cursor: crosshair; }
   .comparacao { font-size: .75rem; }
   .comparacao thead th { font-size: .6875rem; }
   body.adicionando .cartao, body.adicionando .busca, body.adicionando .legenda,
-  body.adicionando #botao-info, body.adicionando #botao-menu, body.adicionando .menu,
+  body.adicionando #botao-info, body.adicionando #botao-menu, body.adicionando .menu, body.adicionando .marca-topo,
   body.adicionando .info, body.adicionando .controles { display: none; }
   body.adicionando .sim-mapa-acoes { display: block; z-index: 1200; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); padding: 14px; border-radius: 16px; }
   .sim-mapa-acoes p { margin: 0 0 12px; font-size: .875rem; line-height: 1.4; }
