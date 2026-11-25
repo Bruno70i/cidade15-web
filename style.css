@@ -329,6 +329,7 @@ body.adicionando #mapa { cursor: crosshair; }
 .cenario-mapa > span { font-size: .8125rem; font-weight: 600; color: var(--texto-suave); }
 .cenario-mapa .alternador button { font-size: .8125rem; }
 .cenario-mapa .suave { margin: 0; font-size: .75rem; }
+.otim-resultado .cenario-mapa { margin-top: 12px; }
 .otim-lista { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
 .otim-lista button {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%;

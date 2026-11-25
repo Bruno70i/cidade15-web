@@ -23,9 +23,14 @@
     let pedido = 0;             // descarta desenhos de categorias antigas
     let avisos = { carregando: () => {}, erro: () => {} }; // funções do app.js
     const guardados = new Map(); // promessas das categorias da cidade atual
-    // Simulação: novos locais e como mostrar o "depois" no mapa de calor.
-    let cenario = null;         // { porCategoria: {health:[{lat,lon}]}, alvos: {health: pp}, fatores: {} }
-    let origemCenario = null;   // resposta da simulação que gerou o cenário
+    // "Depois" no mapa de calor: vem da simulação (locais que o usuário pôs) ou da
+    // sugestão de locais (rota /optimize). Vale o mais recente; o botão de cada um
+    // traz o seu de volta. Cenário: { porCategoria: {health:[{lat,lon}]}, alvos: {health: pp}, fatores: {} }
+    let fontes = { simulacao: null, sugestao: null };
+    let origens = { simulacao: null, sugestao: null }; // respostas que geraram cada cenário
+    let efetiva = null;         // "simulacao" ou "sugestao": a que o mapa mostra
+    let cenario = null;         // o cenário da fonte efetiva
+    let aplicados = new WeakSet(); // respostas já mostradas (uma que volta, ex. ao cancelar, não é "nova")
     let verDepois = false;      // true = cores com os novos locais (estimativa)
     const FATOR_PADRAO = 1.3;   // caminho pela rua ~30% maior que a linha reta (usado se faltar o ajuste)
 
@@ -47,18 +52,20 @@
         if (minutos === null) return 0;
         return 1 - Math.min(minutos, 2 * limiar()) / (2 * limiar());
     }
+    const nomeDosNovos = () => efetiva === "sugestao" ? "os locais sugeridos" : "os novos locais";
     function textoDoTempo(minutos, estimado = false) {
         if (minutos === null) return "Sem caminho a pé registrado";
         const alvo = categoria === "overall" ? "chegar aos 4 tipos de serviço" : `chegar a ${NOMES[categoria].toLowerCase()}`;
-        return `${estimado ? "≈ " : ""}${numero.format(minutos)} min para ${alvo}${estimado ? " (estimativa com os novos locais)" : ""}`;
+        return `${estimado ? "≈ " : ""}${numero.format(minutos)} min para ${alvo}${estimado ? ` (estimativa com ${nomeDosNovos()})` : ""}`;
     }
 
-    // ===== "Depois" da simulação =====
-    // A API da simulação devolve os percentuais exatos (calculados pela rede de ruas),
-    // mas não o tempo de cada ponto. Para o mapa mostrar onde melhora, cada ponto
-    // ganha um tempo ESTIMADO até o novo local: distância em linha reta x fator / velocidade.
-    // O fator de cada categoria é ajustado para que a parte dos pontos que passa a
-    // ter acesso na amostra bata com o resultado exato da simulação (estratégia "nodes").
+    // ===== "Depois" da simulação ou da sugestão =====
+    // As APIs devolvem os percentuais exatos (calculados pela rede de ruas), mas não o
+    // tempo de cada ponto. Para o mapa mostrar onde melhora, cada ponto ganha um tempo
+    // ESTIMADO até o novo local: distância em linha reta x fator / velocidade.
+    // O fator de cada categoria é ajustado para que a parte dos pontos que passa a ter
+    // acesso na amostra bata com o ganho exato: o da simulação (estratégia "nodes") ou,
+    // na sugestão, o ganho de população que a própria rota /optimize calculou.
     function metros(a, b) {
         const latMedia = ((a.lat + b.lat) / 2) * Math.PI / 180;
         const dx = (b.lon - a.lon) * 111320 * Math.cos(latMedia);
@@ -195,12 +202,13 @@
     }
 
     // ===== Desenho =====
-    function desenhar() {
+    // animar: troca de cenário (antes x depois) com transição suave das cores.
+    function desenhar({ animar = false } = {}) {
         camadaPontos.clearLayers();
         const depois = verDepois && Boolean(cenario);
         if (modo === "calor") {
             // O contorno da cidade corta o calor: nada é pintado fora da divisa.
-            camadaCalor.definir(pontos, (ponto) => posicaoDoTempo(minutosExibidos(ponto)), info?.boundary);
+            camadaCalor.definir(pontos, (ponto) => posicaoDoTempo(minutosExibidos(ponto)), info?.boundary, { animar });
         } else {
             camadaCalor.definir([], () => 0);
             for (const ponto of pontos) {
@@ -242,6 +250,37 @@
         }
     }
 
+    // Guarda o cenário de uma fonte. Um cenário novo passa a ser o mostrado (já no
+    // "depois"); se o mostrado sumir, volta o da outra fonte, se houver.
+    // voltou = a mesma resposta de antes (ex.: "Cancelar" na simulação): ela só volta
+    // a ser mostrada se o mapa não estiver mostrando a outra fonte.
+    function aplicarFonte(fonte, novo, voltou = false) {
+        fontes[fonte] = novo;
+        if (novo && !(voltou && efetiva && efetiva !== fonte)) {
+            efetiva = fonte;
+            verDepois = true;
+        } else if (!novo && efetiva === fonte) {
+            const outra = fonte === "simulacao" ? "sugestao" : "simulacao";
+            efetiva = fontes[outra] ? outra : null;
+        }
+        cenario = efetiva ? fontes[efetiva] : null;
+        if (!cenario) verDepois = false;
+        if (info) desenhar({ animar: true });
+    }
+    function zerarCenarios() {
+        fontes = { simulacao: null, sugestao: null };
+        origens = { simulacao: null, sugestao: null };
+        aplicados = new WeakSet();
+        efetiva = null; cenario = null; verDepois = false;
+    }
+    // Os novos locais mudam as cores da categoria que está na tela? (Ex.: locais de
+    // saúde não mudam o mapa de educação; no índice geral, qualquer categoria muda.)
+    function afetaCategoria() {
+        if (!cenario) return false;
+        const codigos = categoria === "overall" ? CATEGORIAS : [categoria];
+        return codigos.some((codigo) => cenario.porCategoria[codigo]?.length);
+    }
+
     // Limpa apenas o desenho; os dados das categorias continuam em cache.
     function esquecerRecebidos() {
         pontos = [];
@@ -279,7 +318,7 @@
             execucao = novaExecucao;
             categoria = novaCategoria;
             info = null;
-            cenario = null; origemCenario = null; verDepois = false;
+            zerarCenarios();
             const dados = await fonte.metadata(novaExecucao);
             if (minha !== geracao) return;
             info = dados;
@@ -294,22 +333,22 @@
             guardados.clear();
             execucao = null;
             info = null;
-            cenario = null; origemCenario = null; verDepois = false;
+            zerarCenarios();
         },
 
         // Recebe a resposta da simulação (ou null). Cada cálculo novo mostra o "depois".
         definirCenario(resultado) {
-            if (resultado === origemCenario) return;
-            origemCenario = resultado;
+            if (resultado === origens.simulacao) return;
+            origens.simulacao = resultado;
+            const voltou = Boolean(resultado) && aplicados.has(resultado);
+            if (resultado) aplicados.add(resultado);
             const porCategoria = {};
             for (const local of resultado?.added_services ?? []) {
                 if (!Number.isFinite(local.latitude) || !Number.isFinite(local.longitude)) continue;
                 (porCategoria[local.category] ??= []).push({ lat: local.latitude, lon: local.longitude });
             }
-            if (!Object.keys(porCategoria).length) {
-                cenario = null;
-                verDepois = false;
-            } else {
+            let novo = null;
+            if (Object.keys(porCategoria).length) {
                 const alvos = {};
                 for (const [codigo, item] of Object.entries(resultado.results ?? {})) {
                     const nos = item?.nodes;
@@ -317,17 +356,37 @@
                         alvos[codigo] = nos.after.coverage_percentage - nos.before.coverage_percentage;
                     }
                 }
-                cenario = { porCategoria, alvos, fatores: {} };
-                verDepois = true;
+                novo = { porCategoria, alvos, fatores: {} };
             }
-            if (info) desenhar();
+            aplicarFonte("simulacao", novo, voltou);
         },
-        mostrarDepois(mostrar) {
+        // Recebe a resposta da sugestão de locais (ou null). Assim que os pontos
+        // chegam, o mapa de calor passa a mostrar o "depois" com eles.
+        definirSugestao(resultado) {
+            if (resultado === origens.sugestao) return;
+            origens.sugestao = resultado;
+            const novos = (resultado?.locations ?? [])
+                .filter((local) => Number.isFinite(local?.latitude) && Number.isFinite(local?.longitude))
+                .map((local) => ({ lat: local.latitude, lon: local.longitude }));
+            let novo = null;
+            if (novos.length && CATEGORIAS.includes(resultado.category)) {
+                const ganho = Number.isFinite(resultado.coverage_delta_percentage_points)
+                    ? resultado.coverage_delta_percentage_points
+                    : resultado.simulated_coverage_percentage - resultado.baseline_coverage_percentage;
+                novo = { porCategoria: { [resultado.category]: novos }, alvos: Number.isFinite(ganho) ? { [resultado.category]: ganho } : {}, fatores: {} };
+            }
+            aplicarFonte("sugestao", novo);
+        },
+        // Botões "Antes / Com os novos locais". fonte: de qual cenário é o botão "depois".
+        mostrarDepois(mostrar, fonte = null) {
+            if (mostrar && fontes[fonte]) { efetiva = fonte; cenario = fontes[fonte]; }
             verDepois = Boolean(mostrar) && Boolean(cenario);
-            if (info) desenhar();
+            if (info) desenhar({ animar: true });
         },
         temCenario: () => Boolean(cenario),
         vendoDepois: () => verDepois && Boolean(cenario),
+        fonteDoCenario: () => (cenario ? efetiva : null),
+        afetaCategoriaAtual: () => afetaCategoria(),
 
         centralizar(margens) {
             if (!info) return;
@@ -359,9 +418,9 @@
         // Dados da legenda do canto da tela: régua de 0 a 30+ minutos.
         legenda() {
             const t = limiar();
-            const depois = verDepois && Boolean(cenario);
+            const depois = verDepois && afetaCategoria();
             return {
-                titulo: `${categoria === "overall" ? "Tempo a pé até os 4 tipos de serviço" : `Tempo a pé até ${NOMES[categoria].toLowerCase()}`}${depois ? " — com os novos locais (estimativa)" : ""}`,
+                titulo: `${categoria === "overall" ? "Tempo a pé até os 4 tipos de serviço" : `Tempo a pé até ${NOMES[categoria].toLowerCase()}`}${depois ? ` — com ${nomeDosNovos()} (estimativa)` : ""}`,
                 tituloCurto: "Minutos a pé",
                 degrade: window.Cores.degrade(true, "180deg"), // em cima a cor boa (perto)
                 // "curto" é o texto usado no celular, onde a legenda é estreita.
@@ -371,7 +430,9 @@
                     { posicao: 1, texto: `${numero.format(2 * t)}+ min`, curto: `${numero.format(2 * t)}+` },
                 ],
                 extras: CATEGORIAS.map((codigo) => ({ icone: codigo, texto: NOMES[codigo] })),
-                nota: `O meio da régua é o limite de ${numero.format(t)} minutos. Áreas sem cor não têm pontos de rua na amostra.${depois ? " Com os novos locais, as cores são uma estimativa ajustada ao resultado exato da simulação." : ""}`,
+                nota: `O meio da régua é o limite de ${numero.format(t)} minutos. Áreas sem cor não têm pontos de rua na amostra.${!depois ? "" : efetiva === "sugestao"
+                    ? " Com os locais sugeridos, as cores são uma estimativa ajustada ao ganho calculado pela sugestão."
+                    : " Com os novos locais, as cores são uma estimativa ajustada ao resultado exato da simulação."}`,
             };
         },
     };

@@ -6,11 +6,29 @@
 // vira uma cor do degradê (cores.js). Onde não há pontos por perto, fica
 // transparente. No fim a grade é ampliada com suavização, virando um degradê
 // contínuo, e é recortada no contorno da cidade.
+//
+// Troca de cenário (antes x depois de novos locais): as cores mudam aos poucos.
+// Como a média de cada quadradinho é uma soma com pesos, as somas do "antes" e do
+// "depois" são feitas uma vez só; cada quadro da transição apenas mistura as duas.
 (() => {
     const L = window.L;
     const CELULA = 5;      // tamanho de cada quadradinho, em pixels
     const OPACIDADE = 160; // 0 a 255: deixa as ruas aparecerem por baixo
     const SOBRA = 0.3;     // desenha 30% além de cada lado da tela (arrastar sem bordas vazias)
+    const DURACAO = 900;   // milissegundos da transição entre "antes" e "depois"
+
+    // 256 tons do degradê, calculados uma vez (cor de cada quadradinho sem refazer a conta).
+    let tabela = null;
+    function tons() {
+        if (!tabela) {
+            tabela = new Uint8Array(256 * 3);
+            for (let i = 0; i < 256; i++) tabela.set(window.Cores.rgb(i / 255), i * 3);
+        }
+        return tabela;
+    }
+    const suave = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2); // começa e termina devagar
+    const reduzirMovimento = () => Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+    const agora = () => (window.performance ?? Date).now();
 
     // Linhas (anéis) de um contorno GeoJSON, seja um polígono ou vários.
     function aneis(geometria) {
@@ -46,18 +64,49 @@
         initialize(opcoes) {
             L.setOptions(this, opcoes);
             this._pontos = [];
-            this._posicao = () => 0;
+            this._valores = new Float32Array(0); // posição no degradê de cada ponto (o destino)
+            this._de = null;                     // valores de partida durante uma transição
+            this._t = 1;                         // andamento da transição (1 = terminada)
             this._recorte = null;
+            this._grade = null;                  // somas da tela atual, prontas para pintar
         },
 
         // pontos: [{lat, lon, ...}]
         // posicaoDe(ponto): de 0 (pior) a 1 (melhor), a posição no degradê
         // recorte: contorno da cidade (GeoJSON); o calor não passa dessa linha
-        definir(pontos, posicaoDe, recorte = null) {
+        // animar: se os pontos são os mesmos do desenho anterior, as cores mudam aos poucos
+        definir(pontos, posicaoDe, recorte = null, { animar = false } = {}) {
+            const partida = animar && pontos === this._pontos && this._valores.length === pontos.length
+                ? this._valoresVisiveis() : null;
+            this._pararAnimacao();
             this._pontos = pontos;
-            this._posicao = posicaoDe;
             this._recorte = recorte;
-            this._desenhar();
+            this._valores = Float32Array.from(pontos, (ponto) => {
+                const valor = posicaoDe(ponto);
+                return Number.isFinite(valor) ? valor : 0; // valor inválido = pior cor, nunca uma mancha preta
+            });
+            const mudou = partida && partida.some((valor, i) => Math.abs(valor - this._valores[i]) > 1e-4);
+            this._de = mudou && !reduzirMovimento() ? partida : null;
+            this._t = this._de ? 0 : 1;
+            this._agendar();
+        },
+
+        // Desenha no próximo quadro (vários pedidos no mesmo quadro viram um desenho só).
+        // Durante um zoom nada é desenhado: o fim do movimento (moveend) pede o desenho.
+        _agendar() {
+            if (this._escondido || this._pedido || !this._mapa) return;
+            this._pedido = requestAnimationFrame(() => { this._pedido = null; this._desenhar(); });
+        },
+        _aoMover() {
+            this._escondido = false;
+            this._agendar();
+        },
+
+        // O que está na tela agora (no meio de uma transição, a mistura das duas).
+        _valoresVisiveis() {
+            if (!this._de || this._t >= 1) return this._valores.slice();
+            const mistura = suave(this._t);
+            return this._valores.map((valor, i) => this._de[i] + (valor - this._de[i]) * mistura);
         },
 
         onAdd(mapa) {
@@ -67,23 +116,40 @@
             // Durante o zoom (inclusive a pinça no celular) o desenho antigo ficaria
             // na escala errada: escondemos e redesenhamos quando o movimento termina.
             mapa.on("zoomstart", this._esconder, this);
-            mapa.on("moveend resize", this._desenhar, this);
-            this._desenhar();
+            mapa.on("moveend resize", this._aoMover, this);
+            this._agendar();
         },
 
         onRemove(mapa) {
             mapa.off("zoomstart", this._esconder, this);
-            mapa.off("moveend resize", this._desenhar, this);
+            mapa.off("moveend resize", this._aoMover, this);
+            this._pararAnimacao();
+            if (this._pedido) cancelAnimationFrame(this._pedido);
+            this._pedido = null;
+            this._mapa = null;
             L.DomUtil.remove(this._canvas);
             this._canvas = null;
         },
 
+        // Escondido no zoom: a transição pausa e continua de onde parou no redesenho.
         _esconder() {
+            this._escondido = true;
+            if (this._pedido) cancelAnimationFrame(this._pedido);
+            this._pedido = null;
+            this._pararAnimacao();
             if (this._canvas) this._canvas.style.visibility = "hidden";
+        },
+
+        _pararAnimacao() {
+            if (this._quadro) cancelAnimationFrame(this._quadro);
+            clearTimeout(this._garantia);
+            this._quadro = null;
+            this._garantia = null;
         },
 
         _desenhar() {
             if (!this._mapa || !this._canvas) return;
+            this._pararAnimacao();
             const mapa = this._mapa;
             const tela = mapa.getSize();
             // A camada é maior que a tela: sobra de 30% em cada lado.
@@ -99,8 +165,8 @@
             canvas.style.width = `${largura}px`;
             canvas.style.height = `${altura}px`;
             canvas.style.visibility = "";
-            const contexto = canvas.getContext("2d");
-            contexto.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+            this._grade = null;
             if (!this._pontos.length) return;
 
             // Posição de um lugar (lat, lon) dentro da camada, já contando a sobra.
@@ -112,7 +178,7 @@
             // 1) Posição de cada ponto e o raio de influência. O raio acompanha a
             // distância típica entre os pontos que estão na tela: assim as manchas
             // vizinhas se encontram e viram uma superfície, em qualquer zoom.
-            const projetados = this._pontos.map((ponto) => ({ ...naCamada(ponto.lat, ponto.lon), valor: this._posicao(ponto) }));
+            const projetados = this._pontos.map((ponto, i) => ({ ...naCamada(ponto.lat, ponto.lon), i }));
             const naTela = projetados.filter((p) => p.x >= sobraX && p.x <= sobraX + tela.x && p.y >= sobraY && p.y <= sobraY + tela.y);
             const raio = Math.max(14, Math.min(120, distanciaTipica(naTela) * 5));
             const alcance = Math.ceil(raio / CELULA); // raio contado em quadradinhos
@@ -129,15 +195,19 @@
             }
 
             // 2) Cada ponto soma seu valor (com peso) nos quadradinhos ao redor.
+            // Numa transição, soma também o valor de partida, com os mesmos pesos.
             const colunas = Math.ceil(largura / CELULA);
             const linhas = Math.ceil(altura / CELULA);
             const somaValores = new Float32Array(colunas * linhas);
+            const somaPartida = this._de ? new Float32Array(colunas * linhas) : null;
             const somaPesos = new Float32Array(colunas * linhas);
             for (const ponto of projetados) {
                 const coluna = Math.floor(ponto.x / CELULA);
                 const linha = Math.floor(ponto.y / CELULA);
                 // Ponto longe da camada não influencia nada: pula (deixa o desenho rápido).
                 if (coluna < -alcance || linha < -alcance || coluna >= colunas + alcance || linha >= linhas + alcance) continue;
+                const valor = this._valores[ponto.i];
+                const partida = somaPartida ? this._de[ponto.i] : 0;
                 for (let dy = -alcance; dy <= alcance; dy++) {
                     const l = linha + dy;
                     if (l < 0 || l >= linhas) continue;
@@ -146,42 +216,86 @@
                         if (c < 0 || c >= colunas) continue;
                         const peso = pesoVizinho[(dy + alcance) * lado + (dx + alcance)];
                         if (!peso) continue;
-                        somaValores[l * colunas + c] += peso * ponto.valor;
-                        somaPesos[l * colunas + c] += peso;
+                        const k = l * colunas + c;
+                        somaValores[k] += peso * valor;
+                        if (somaPartida) somaPartida[k] += peso * partida;
+                        somaPesos[k] += peso;
                     }
                 }
             }
 
-            // 3) Média de cada quadradinho -> cor. Poucos pontos por perto = mais transparente.
-            const grade = document.createElement("canvas");
-            grade.width = colunas;
-            grade.height = linhas;
-            const imagem = grade.getContext("2d").createImageData(colunas, linhas);
-            for (let i = 0; i < somaPesos.length; i++) {
-                if (somaPesos[i] < 0.03) continue; // sem dados aqui: fica transparente
-                const [vermelho, verde, azul] = window.Cores.rgb(somaValores[i] / somaPesos[i]);
-                imagem.data.set([vermelho, verde, azul, OPACIDADE * Math.min(1, somaPesos[i] / 0.25)], i * 4);
-            }
-            grade.getContext("2d").putImageData(imagem, 0, 0);
-
-            // 4) Amplia a grade com suavização (vira degradê), pintando só DENTRO
-            // do contorno da cidade (o resto é cortado).
-            contexto.setTransform(escala, 0, 0, escala, 0, 0);
+            // Contorno da cidade na posição da camada (usado para cortar cada quadro).
+            let recorte = null;
             if (this._recorte) {
-                contexto.beginPath();
+                recorte = new Path2D();
                 for (const anel of aneis(this._recorte)) {
                     anel.forEach(([lon, lat], i) => {
                         const p = naCamada(lat, lon);
-                        if (i === 0) contexto.moveTo(p.x, p.y);
-                        else contexto.lineTo(p.x, p.y);
+                        if (i === 0) recorte.moveTo(p.x, p.y);
+                        else recorte.lineTo(p.x, p.y);
                     });
-                    contexto.closePath();
+                    recorte.closePath();
                 }
-                contexto.clip("evenodd"); // "evenodd" respeita buracos dentro do contorno
             }
+            const grade = document.createElement("canvas");
+            grade.width = colunas;
+            grade.height = linhas;
+            this._grade = { grade, imagem: grade.getContext("2d").createImageData(colunas, linhas), somaValores, somaPartida, somaPesos, colunas, linhas, recorte, escala };
+
+            if (this._de) this._animar();
+            else this._pintar(1);
+        },
+
+        // 3) e 4): média de cada quadradinho -> cor; amplia com suavização e corta no contorno.
+        // t = andamento da transição (só importa quando há valores de partida).
+        _pintar(t) {
+            const g = this._grade;
+            if (!g || !this._canvas) return;
+            const cores = tons();
+            const dados = g.imagem.data;
+            const mistura = g.somaPartida && t < 1 ? suave(t) : 1;
+            for (let i = 0; i < g.somaPesos.length; i++) {
+                const peso = g.somaPesos[i];
+                const j = i * 4;
+                if (peso < 0.03) { dados[j + 3] = 0; continue; } // sem dados aqui: fica transparente
+                const soma = mistura < 1 ? g.somaPartida[i] + (g.somaValores[i] - g.somaPartida[i]) * mistura : g.somaValores[i];
+                const k = Math.round(Math.min(1, Math.max(0, soma / peso)) * 255) * 3;
+                dados[j] = cores[k];
+                dados[j + 1] = cores[k + 1];
+                dados[j + 2] = cores[k + 2];
+                dados[j + 3] = OPACIDADE * Math.min(1, peso / 0.25); // poucos pontos por perto = mais transparente
+            }
+            g.grade.getContext("2d").putImageData(g.imagem, 0, 0);
+            const contexto = this._canvas.getContext("2d");
+            contexto.setTransform(1, 0, 0, 1, 0, 0);
+            contexto.clearRect(0, 0, this._canvas.width, this._canvas.height);
+            contexto.setTransform(g.escala, 0, 0, g.escala, 0, 0);
+            contexto.save();
+            if (g.recorte) contexto.clip(g.recorte, "evenodd"); // "evenodd" respeita buracos no contorno
             contexto.imageSmoothingEnabled = true;
             contexto.imageSmoothingQuality = "high";
-            contexto.drawImage(grade, 0, 0, colunas * CELULA, linhas * CELULA);
+            contexto.drawImage(g.grade, 0, 0, g.colunas * CELULA, g.linhas * CELULA);
+            contexto.restore();
+        },
+
+        // Quadro a quadro até o fim (continua de onde parou se foi interrompida pelo zoom).
+        _animar() {
+            const inicio = agora() - this._t * DURACAO;
+            const terminar = () => {
+                this._pararAnimacao();
+                this._t = 1;
+                this._de = null;
+                this._pintar(1);
+            };
+            const passo = () => {
+                this._t = Math.min(1, (agora() - inicio) / DURACAO);
+                if (this._t >= 1) { terminar(); return; }
+                this._pintar(this._t);
+                this._quadro = requestAnimationFrame(passo);
+            };
+            passo();
+            // Aba em segundo plano não desenha quadros: garante a cor final mesmo assim.
+            if (this._de) this._garantia = setTimeout(terminar, (1 - this._t) * DURACAO + 400);
         },
     });
 

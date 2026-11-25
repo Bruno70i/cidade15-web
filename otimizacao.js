@@ -27,6 +27,8 @@
   let margens = () => ({});   // espaço que o card ocupa na tela (vem do app.js)
   let antesDeMostrar = () => {};
   let aoEscolherCategoria = () => {}; // o app.js troca o card e o mapa de calor
+  let aoMudarResultado = () => {};    // o app.js leva os pontos sugeridos ao mapa de calor ("depois")
+  let aoSimular = () => {};           // impacto completo pronto: o mapa mostra a simulação
 
   function escapar(texto) {
     return String(texto ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -118,12 +120,15 @@
     desenharMapa();
     desenharResultado();
     atualizarBotoes();
+    // Sugestão nova, apagada ou trocada de cidade: o mapa de calor acompanha.
+    try { aoMudarResultado(resultado); } catch { /* o mapa não impede a sugestão */ }
   }
 
   // Enquadra todos os pontos sugeridos, sem deixar o card cobrir nenhum.
   function mostrarTodos() {
-    if (!marcadores.length) return;
-    mapa.fitBounds(window.L.latLngBounds(marcadores.map((marcador) => marcador.getLatLng())), { ...margens(), maxZoom: 15 });
+    const pontos = (resultado?.locations ?? []).map((local) => [local.latitude, local.longitude]);
+    if (!pontos.length) return;
+    mapa.fitBounds(window.L.latLngBounds(pontos), { ...margens(), maxZoom: 15 });
   }
   // "Ver no mapa" de um item da lista.
   function mostrar(rank) {
@@ -158,8 +163,10 @@
       resultado = { ...dados, category: dados.category ?? categoria, k_requested: dados.k_requested ?? k, locations: dados.locations.filter(valido) };
       mensagem("");
       calculando = false;
-      desenhar();
+      // Enquadra antes de desenhar: o mapa de calor espera o zoom terminar e é
+      // calculado uma vez só, já na vista final (com a transição para o "depois").
       mostrarTodos();
+      desenhar();
     } catch (erro) {
       if (meu === pedido) mensagem(textoDoErro(erro));
     } finally {
@@ -182,6 +189,7 @@
       if (meu !== pedido) return;
       if (resposta.ocupado) mensagem("A simulação ainda está calculando. Aguarde terminar e tente de novo.");
       else if (resposta.concluida) {
+        try { aoSimular(); } catch { /* o mapa não impede a mensagem */ }
         mensagem("Impacto calculado: veja o resultado no topo do painel e no botão (i).");
         el("sim-resultado-acoes")?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
       } else mensagem(`Os locais foram para a simulação, mas o cálculo não terminou. ${el("sim-mensagem").textContent}`.trim());
@@ -226,6 +234,8 @@
       margens = opcoes.margens ?? margens;
       antesDeMostrar = opcoes.antesDeMostrar ?? antesDeMostrar;
       aoEscolherCategoria = opcoes.aoEscolherCategoria ?? aoEscolherCategoria;
+      aoMudarResultado = opcoes.aoMudarResultado ?? aoMudarResultado;
+      aoSimular = opcoes.aoSimular ?? aoSimular;
       camada = window.L.layerGroup().addTo(mapa);
       for (const botao of document.querySelectorAll("#otim-tipos [data-tipo]")) {
         botao.addEventListener("click", () => escolherTipo(botao.dataset.tipo));

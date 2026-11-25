@@ -11,7 +11,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="marca/icone-32.png?v=20261124-marca">
   <link rel="apple-touch-icon" href="marca/icone-180.png?v=20261124-marca">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=20261102-interface-18">
-  <link rel="stylesheet" href="style.css?v=20261125-niveis2">
+  <link rel="stylesheet" href="style.css?v=20261125-sugestao">
   <!-- Ordem importa: o Leaflet primeiro, o app.js por último (ele usa todos os outros). -->
   <script src="vendor/leaflet/leaflet.js?v=20261102-interface-18" defer></script>
   <script src="browser-cache.js?v=20261124-melhorias" defer></script>
@@ -20,18 +20,18 @@
   <script src="map-data.js?v=20261102-interface-18" defer></script>
   <script src="icones.js?v=20261120-otimizacao" defer></script>
   <script src="cores.js?v=20261102-interface-18" defer></script>
-  <script src="calor.js?v=20261102-interface-18" defer></script>
+  <script src="calor.js?v=20261125-sugestao2" defer></script>
   <script src="map-viewport.js?v=20261102-interface-18" defer></script>
   <script src="regioes.js?v=20261125-niveis3" defer></script>
   <script src="mapa-mundo.js?v=20261125-niveis10" defer></script>
-  <script src="mapa-cidade.js?v=20261124-melhorias" defer></script>
+  <script src="mapa-cidade.js?v=20261125-sugestao2" defer></script>
   <script src="simulacao-vista.js?v=20261102-interface-18" defer></script>
   <script src="simulacao-locais.js?v=20261102-interface-18" defer></script>
   <script src="simulacao.js?v=20261120-otimizacao" defer></script>
-  <script src="otimizacao.js?v=20261124-melhorias" defer></script>
+  <script src="otimizacao.js?v=20261125-sugestao2" defer></script>
   <script src="busca.js?v=20261102-interface-18" defer></script>
   <script src="navegacao.js?v=20261103-hierarquia" defer></script>
-  <script src="app.js?v=20261125-niveis" defer></script>
+  <script src="app.js?v=20261125-sugestao2" defer></script>
 </head>
 
 <body>
@@ -156,8 +156,8 @@
         <div class="cenario-mapa">
           <span id="rotulo-cenario">Cores do mapa</span>
           <div class="alternador" role="group" aria-labelledby="rotulo-cenario">
-            <button type="button" data-cenario="antes" aria-pressed="false">Antes</button>
-            <button type="button" data-cenario="depois" aria-pressed="true">Com os novos locais</button>
+            <button type="button" data-cenario="antes" data-fonte="simulacao" aria-pressed="false">Antes</button>
+            <button type="button" data-cenario="depois" data-fonte="simulacao" aria-pressed="true">Com os novos locais</button>
           </div>
           <p id="nota-cenario" class="suave"></p>
         </div>
@@ -202,6 +202,14 @@
         <p id="otim-mensagem" class="suave" role="status" aria-live="polite" hidden></p>
         <div id="otim-resultado" class="otim-resultado" hidden>
           <p id="otim-resumo" class="otim-resumo"></p>
+          <div id="otim-cenario" class="cenario-mapa" hidden>
+            <span id="otim-rotulo-cenario">Cores do mapa</span>
+            <div class="alternador" role="group" aria-labelledby="otim-rotulo-cenario">
+              <button type="button" data-cenario="antes" data-fonte="sugestao" aria-pressed="false">Antes</button>
+              <button type="button" data-cenario="depois" data-fonte="sugestao" aria-pressed="true">Com os locais sugeridos</button>
+            </div>
+            <p id="otim-nota-cenario" class="suave"></p>
+          </div>
           <ol id="otim-lista" class="otim-lista" aria-label="Locais sugeridos"></ol>
           <div class="otim-acoes">
             <button id="otim-simular" class="botao" type="button"><i data-icone="varinha"></i>Simular impacto completo</button>

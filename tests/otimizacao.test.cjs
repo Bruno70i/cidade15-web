@@ -69,14 +69,16 @@ function iniciar(optimize, adicionarSugeridos = async () => ({ adicionados: 0, c
   const otimizacao = contexto.window.Otimizacao;
   let minimizado = 0;
   const categoriasDoCard = [];
+  const resultadosParaOMapa = [];
   otimizacao.iniciar(mapa, {
     margens: () => ({ padding: [1, 1] }),
     antesDeMostrar: () => { minimizado++; },
     aoEscolherCategoria: (categoria) => { categoriasDoCard.push(categoria); },
+    aoMudarResultado: (resultado) => { resultadosParaOMapa.push(resultado); },
   });
   otimizacao.reset({ id: 5913, city_id: 2, threshold_minutes: 15 });
   return {
-    otimizacao, elemento, mapa, marcadores, pedidos, tipos, quantidades, categoriasDoCard,
+    otimizacao, elemento, mapa, marcadores, pedidos, tipos, quantidades, categoriasDoCard, resultadosParaOMapa,
     minimizado: () => minimizado,
     sugerir: () => elemento("otim-sugerir").eventos.click(),
     simular: () => elemento("otim-simular").eventos.click(),
@@ -205,4 +207,60 @@ test("sem cidade aberta o botao fica desligado", () => {
   const app = iniciar(async () => RESPOSTA);
   app.otimizacao.reset(null);
   assert.equal(app.elemento("otim-sugerir").disabled, true);
+});
+
+test("o mapa de calor recebe a sugestão assim que ela chega e a perde ao limpar", async () => {
+  let responder;
+  const app = iniciar(() => new Promise((ok) => { responder = ok; }));
+  app.resultadosParaOMapa.length = 0;
+  const pedido = app.sugerir();
+  // Enquanto procura, não há sugestão: o mapa volta às cores atuais.
+  assert.deepEqual(app.resultadosParaOMapa, [null]);
+  responder(RESPOSTA);
+  await pedido;
+  const ultimo = app.resultadosParaOMapa.at(-1);
+  assert.equal(ultimo.category, "health");
+  assert.equal(ultimo.locations.length, 3);
+  assert.equal(ultimo.coverage_delta_percentage_points, 8.74);
+  app.limpar();
+  assert.equal(app.resultadosParaOMapa.at(-1), null);
+  // Trocar de cidade também apaga a sugestão do mapa.
+  const segundo = app.sugerir();
+  responder(RESPOSTA);
+  await segundo;
+  assert.equal(app.resultadosParaOMapa.at(-1).category, "health");
+  app.otimizacao.reset({ id: 99, city_id: 3, threshold_minutes: 15 });
+  assert.equal(app.resultadosParaOMapa.at(-1), null);
+});
+
+test("um erro ao atualizar o mapa de calor não impede a sugestão", async () => {
+  const app = iniciar(async () => RESPOSTA);
+  app.otimizacao.iniciar(app.mapa, { aoMudarResultado: () => { throw new Error("mapa escondido"); } });
+  await app.sugerir();
+  assert.equal(app.elemento("otim-resultado").hidden, false);
+  assert.equal(app.marcadores.length, 3);
+});
+
+test("enquadra os pontos antes de avisar o mapa de calor (ele desenha uma vez só, já na vista final)", async () => {
+  const app = iniciar(async () => RESPOSTA);
+  const ordem = [];
+  app.otimizacao.iniciar(app.mapa, { aoMudarResultado: (r) => ordem.push(r ? `resultado com ${app.mapa.enquadramentos.length} enquadramento(s)` : "vazio") });
+  await app.sugerir();
+  assert.equal(ordem.at(-1), "resultado com 1 enquadramento(s)");
+  assert.equal(JSON.stringify(app.mapa.enquadramentos[0][0]), JSON.stringify(RESPOSTA.locations.map((l) => [l.latitude, l.longitude])));
+});
+
+test("quando o impacto completo fica pronto, avisa o app para o mapa mostrar a simulação", async () => {
+  let simulou = 0;
+  const app = iniciar(async () => RESPOSTA, async () => ({ adicionados: 3, concluida: true }));
+  app.otimizacao.iniciar(app.mapa, { aoSimular: () => { simulou++; } });
+  await app.sugerir();
+  await app.simular();
+  assert.equal(simulou, 1);
+  const ocupado = iniciar(async () => RESPOSTA, async () => ({ adicionados: 0, concluida: false, ocupado: true }));
+  let simulouOcupado = 0;
+  ocupado.otimizacao.iniciar(ocupado.mapa, { aoSimular: () => { simulouOcupado++; } });
+  await ocupado.sugerir();
+  await ocupado.simular();
+  assert.equal(simulouOcupado, 0);
 });

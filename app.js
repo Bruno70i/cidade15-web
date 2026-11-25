@@ -117,15 +117,32 @@
     }
   }
 
-  // Botões "Antes / Com os novos locais" (aparecem junto com o resultado da simulação).
+  // Botões "Antes / Com os novos locais": um par no resultado da simulação e outro na
+  // sugestão de locais (data-fonte diz de qual cenário é o botão "depois").
   function desenharCenario() {
     const depois = window.MapaCidade.vendoDepois();
+    const fonte = window.MapaCidade.fonteDoCenario();
+    const muda = window.MapaCidade.afetaCategoriaAtual(); // os novos locais mudam a categoria da tela?
     for (const botao of document.querySelectorAll("[data-cenario]")) {
-      botao.setAttribute("aria-pressed", String((botao.dataset.cenario === "depois") === depois));
+      const pressionado = botao.dataset.cenario === "depois" ? depois && fonte === botao.dataset.fonte : !depois;
+      botao.setAttribute("aria-pressed", String(pressionado));
     }
-    $("nota-cenario").textContent = depois
-      ? "Com os novos locais, as cores são uma estimativa ajustada ao resultado exato da simulação."
-      : "As cores mostram a situação atual, sem os novos locais.";
+    $("nota-cenario").textContent = !depois
+      ? "As cores mostram a situação atual, sem os novos locais."
+      : fonte !== "simulacao"
+        ? "O mapa está mostrando os locais sugeridos. Toque em “Com os novos locais” para ver a simulação."
+        : muda
+          ? "Com os novos locais, as cores são uma estimativa ajustada ao resultado exato da simulação."
+          : "Os novos locais não mudam as cores desta categoria. Escolha a categoria deles ou Geral para ver o efeito.";
+    const sugerida = CATEGORIAS[window.Otimizacao.resultado()?.category] ?? "a categoria sugerida";
+    $("otim-cenario").hidden = !window.Otimizacao.resultado()?.locations?.length;
+    $("otim-nota-cenario").textContent = !depois
+      ? "As cores mostram a situação atual, sem os locais sugeridos."
+      : fonte !== "sugestao"
+        ? "O mapa está mostrando a simulação completa. Toque em “Com os locais sugeridos” para ver só a sugestão."
+        : muda
+          ? "Perto dos pontos sugeridos, as cores são uma estimativa ajustada ao ganho calculado pela sugestão."
+          : `Os locais sugeridos são de ${sugerida}: as cores desta categoria não mudam. Escolha ${sugerida} ou Geral para ver o efeito.`;
   }
 
   // Dica que aparece em cima da barra ao passar o mouse (ou focar pelo teclado).
@@ -173,8 +190,8 @@
         <li>${window.Icones.svg("caminhar")}<span>Até <b>${decimal.format(execucao.threshold_minutes)} min</b> a pé, a ${decimal.format(execucao.speed_kmh)} km/h</span></li>
         <li>${window.Icones.svg("calendario")}<span>Análise de ${escapar(dataBR.format(new Date(execucao.processed_at)))}</span></li>
       </ul>
-      <p class="suave">A simulação compara percentuais de acesso (cálculo exato pela rede de ruas). ${window.MapaCidade.vendoDepois()
-        ? "As cores do mapa estão mostrando uma estimativa com os novos locais; o botão “Antes” volta à situação atual."
+      <p class="suave">A simulação compara percentuais de acesso (cálculo exato pela rede de ruas). ${window.MapaCidade.vendoDepois() && window.MapaCidade.afetaCategoriaAtual()
+        ? `As cores do mapa estão mostrando uma estimativa com ${window.MapaCidade.fonteDoCenario() === "sugestao" ? "os locais sugeridos" : "os novos locais"}; o botão “Antes” volta à situação atual.`
         : "As cores do mapa representam a situação atual."}</p>
       <button class="botao-texto" type="button" data-painel="metodologia">${window.Icones.svg("livro")}Como funciona o cálculo</button>`;
   }
@@ -379,6 +396,7 @@
     // o card continua sendo atualizado e o mapa se redesenha quando aparecer.
     try { window.MapaCidade.trocarCategoria(estado.categoria); } catch { /* idem */ }
     desenharCartao();
+    desenharCenario(); // a nota de "antes/depois" depende da categoria na tela
     desenharInfo();
     desenharLegenda();
     navegacao.atualizarCategoria(estado.categoria);
@@ -423,10 +441,10 @@
       $("info").scrollTop = 0;
       $("info").querySelector(".botao-fechar").focus();
     });
-    // Cores do mapa de calor depois de uma simulação: antes x com os novos locais.
+    // Cores do mapa de calor depois de uma simulação ou sugestão: antes x com os novos locais.
     for (const botao of document.querySelectorAll("[data-cenario]")) {
       botao.addEventListener("click", () => {
-        window.MapaCidade.mostrarDepois(botao.dataset.cenario === "depois");
+        window.MapaCidade.mostrarDepois(botao.dataset.cenario === "depois", botao.dataset.fonte);
         desenharCenario();
         desenharInfo();
         desenharLegenda();
@@ -584,10 +602,25 @@
   });
   // Sugestão de locais (rota /optimize). Ao pedir, o card e o mapa de calor passam
   // para a mesma categoria, para os pinos aparecerem sobre o tempo daquele serviço.
+  // Quando os pontos chegam, o mapa de calor muda sozinho para o "depois" com eles.
   // No celular o card cobre metade da tela: ele é minimizado antes de mostrar um ponto.
   window.Otimizacao.iniciar(mapa, {
     margens,
     aoEscolherCategoria: (categoria) => { if (estado.cidade && estado.categoria !== categoria) mostrarCategoria(categoria); },
+    aoMudarResultado: (resultado) => {
+      window.MapaCidade.definirSugestao(resultado);
+      desenharCenario();
+      desenharInfo();
+      if (estado.cidade) desenharLegenda();
+    },
+    // "Simular impacto completo" terminou (mesmo sem recalcular): o mapa mostra a simulação.
+    aoSimular: () => {
+      if (window.MapaCidade.fonteDoCenario() === "simulacao" && window.MapaCidade.vendoDepois()) return;
+      window.MapaCidade.mostrarDepois(true, "simulacao");
+      desenharCenario();
+      desenharInfo();
+      if (estado.cidade) desenharLegenda();
+    },
     antesDeMostrar: () => { if (celular() && !$("cartao").classList.contains("recolhido")) alternarCartao(); },
   });
   window.Busca.iniciar(navegarParaCidade);
